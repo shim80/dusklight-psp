@@ -44,6 +44,7 @@ public:
         std::size_t index,
         const StartContext& start,
         std::uint32_t play_seconds);
+    bool restore_slot(std::size_t index, const Slot& slot);
     bool load_start(std::size_t index, StartContext* output) const;
 
 private:
