@@ -19,7 +19,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            ninja-build cmake git curl xz-utils xvfb
+            ninja-build cmake git curl xz-utils xvfb \
+            pulseaudio pulseaudio-utils
 
       - name: Bootstrap pinned PSP toolchain and source tree
         run: |
@@ -89,13 +90,42 @@ jobs:
           marker="$game_dir/CHEST_SOURCE_FULL.FAIL"
           stdout_log="$RUNNER_TEMP/ppsspp-chest.stdout.log"
           stderr_log="$RUNNER_TEMP/ppsspp-chest.stderr.log"
+          pulse_log="$RUNNER_TEMP/pulseaudio.log"
+          pulse_runtime="$RUNNER_TEMP/pulse-runtime"
+          pulse_server="unix:$pulse_runtime/pulse/native"
 
           test -f "$ppsspp"
           chmod +x "$ppsspp"
-          mkdir -p "$game_dir" "$cache_home"
+          mkdir -p "$game_dir" "$cache_home" "$pulse_runtime"
+          chmod 700 "$pulse_runtime"
           cp "$GITHUB_WORKSPACE/.work/build/chest-source-full/EBOOT.PBP" \
             "$game_dir/EBOOT.PBP"
           rm -f "$marker"
+
+          # PPSSPP v1.20.4 initializes SDL audio before loading the EBOOT and
+          # exposes no no-audio command-line mode. Give SDL a local PulseAudio
+          # null sink so the smoke test can reach PSP code on a headless runner.
+          XDG_RUNTIME_DIR="$pulse_runtime" \
+            pulseaudio --daemonize=no --exit-idle-time=-1 \
+              --log-target=stderr >"$pulse_log" 2>&1 &
+          pulse_pid=$!
+          trap 'kill "$pulse_pid" 2>/dev/null || true' EXIT
+          pulse_ready=false
+          for _ in $(seq 1 20); do
+            if PULSE_SERVER="$pulse_server" pactl info >/dev/null 2>&1; then
+              pulse_ready=true
+              break
+            fi
+            sleep 0.5
+          done
+          if [ "$pulse_ready" != true ]; then
+            echo "PulseAudio did not expose its CI socket." >&2
+            cat "$pulse_log" >&2 || true
+            exit 1
+          fi
+          PULSE_SERVER="$pulse_server" \
+            pactl load-module module-null-sink sink_name=ci >/dev/null
+          PULSE_SERVER="$pulse_server" pactl set-default-sink ci
 
           # Commercial-derived assets are intentionally absent in CI. Reaching
           # fail(10) proves the Allegrex EBOOT booted, initialized the PSP
@@ -104,8 +134,8 @@ jobs:
           HOME="$profile" \
           XDG_CONFIG_HOME="$config_home" \
           XDG_CACHE_HOME="$cache_home" \
-          SDL_AUDIODRIVER=dummy \
-          SDL_AUDIO_DRIVER=dummy \
+          XDG_RUNTIME_DIR="$pulse_runtime" \
+          PULSE_SERVER="$pulse_server" \
           LIBGL_ALWAYS_SOFTWARE=1 \
           APPIMAGE_EXTRACT_AND_RUN=1 \
             timeout 30s xvfb-run -a "$ppsspp" \
@@ -121,6 +151,7 @@ jobs:
             echo "PPSSPP status: $ppsspp_status" >&2
             cat "$stdout_log" >&2 || true
             cat "$stderr_log" >&2 || true
+            cat "$pulse_log" >&2 || true
             exit 1
           fi
           echo "PPSSPP boot smoke passed with expected marker code=10."
