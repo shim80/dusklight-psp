@@ -1,0 +1,54 @@
+name: Materialize latest P1 delta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/materialize-latest-delta.yml
+      - .transfer/latest/**
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reconstruct and verify delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          find .transfer/latest -type f -name 'part*' -print0 | sort -z | xargs -0 cat | base64 -d > /tmp/latest-delta.tar.xz
+          echo '517ab4c5810e4ab3276e0a89507f6e8cd67997c56d5b2b329b7b06ae411d49a0  /tmp/latest-delta.tar.xz' | sha256sum -c -
+          xz -t /tmp/latest-delta.tar.xz
+          test "$(tar -tJf /tmp/latest-delta.tar.xz | wc -l)" -eq 32
+          tar -xJf /tmp/latest-delta.tar.xz -C .
+      - name: Remove transfer-only files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .transfer
+          rm -f .github/workflows/materialize-latest-delta.yml
+          if find . -type f \( -iname '*.b64' -o -iname '*.base64' \) -not -path './.git/*' -print -quit | grep -q .; then
+            echo 'Unexpected Base64 file remains in HEAD:' >&2
+            find . -type f \( -iname '*.b64' -o -iname '*.base64' \) -not -path './.git/*' -print >&2
+            exit 1
+          fi
+      - name: Commit materialized P1 delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'shim80'
+          git config user.email '22941009+shim80@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No materialized changes.'
+            exit 1
+          fi
+          git commit -m 'Publish latest P1 Demo_Item source checkpoint'
+          git push origin HEAD:main
