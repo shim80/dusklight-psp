@@ -129,6 +129,8 @@ public:
     void CrrPos(dBgS_CompatWorld&) {}
 };
 
+struct GXColor { u8 r; u8 g; u8 b; u8 a; };
+
 struct GXColorS10 {
     s16 r;
     s16 g;
@@ -178,9 +180,23 @@ public:
 class dItem_data {
 public:
     static bool chkFlag(u8, u32);
+    static const char* getArcName(u8);
+    static s16 getBmdName(u8);
+    static s16 getBtkName(u8);
+    static s16 getBpkName(u8);
+    static s16 getBckName(u8);
+    static s16 getBxaName(u8);
+    static s16 getBrkName(u8);
+    static s16 getBtpName(u8);
+    static s8 getTevFrm(u8);
+    static s8 getBtpFrm(u8);
+    static u8 getShadowSize(u8);
+    static u8 getH(u8);
+    static u8 getR(u8);
 };
 
 enum : u8 {
+    dItemNo_GREEN_RUPEE_e = 0x01,
     dItemNo_BOMB_5_e = 0x0A,
     dItemNo_BOMB_10_e = 0x0B,
     dItemNo_BOMB_20_e = 0x0C,
@@ -193,14 +209,27 @@ enum : u8 {
     dItemNo_BOMB_INSECT_10_e = 0x1B,
     dItemNo_BOMB_INSECT_20_e = 0x1C,
     dItemNo_BOMB_INSECT_30_e = 0x1D,
+    dItemNo_ORANGE_RUPEE_e = 0x06,
+    dItemNo_SILVER_RUPEE_e = 0x07,
     dItemNo_KAKERA_HEART_e = 0x21,
+    dItemNo_UTAWA_HEART_e = 0x22,
     dItemNo_MAP_e = 0x23,
     dItemNo_COMPUS_e = 0x24,
+    dItemNo_DUNGEON_EXIT_e = 0x25,
+    dItemNo_DUNGEON_BACK_e = 0x27,
+    dItemNo_DUNGEON_EXIT_2_e = 0x33,
+    dItemNo_WALLET_LV3_e = 0x36,
+    dItemNo_WOOD_STICK_e = 0x3F,
     dItemNo_BOOMERANG_e = 0x40,
     dItemNo_NORMAL_BOMB_e = 0x70,
     dItemNo_WATER_BOMB_e = 0x71,
     dItemNo_POKE_BOMB_e = 0x72,
     dItemNo_BOMB_BAG_LV1_e = 0x73,
+    dItemNo_FAIRY_DROP_e = 0x73,
+    dItemNo_DROP_BOTTLE_e = 0x75,
+    dItemNo_CHUCHU_RARE_e = 0x77,
+    dItemNo_POU_SPIRIT_e = 0xE0,
+    dItemNo_LV7_DUNGEON_EXIT_e = 0xEC,
     dItemNo_NONE_e = 0xFF,
     SLOT_15 = 0x0F,
 };
@@ -288,9 +317,12 @@ public:
 dEvent_manager_c& dComIfGp_getEventManager();
 camera_process_class* dComIfGp_getCamera(int);
 int dComIfGp_getPlayerCameraID(int);
-void* dComIfGp_getPlayer(int);
+fopAc_ac_c* dComIfGp_getPlayer(int);
 dStage_roomDt_c* dComIfGp_roomControl_getStatusRoomDt(int);
 const char* dComIfGp_getStartStageName();
+int dComIfGp_roomControl_getStayNo();
+BOOL dComIfGs_isTmpBit(u16);
+class dComIfG_play_c { public: static int getLayerNo(int); };
 
 void dComIfGp_event_onEventFlag(u16);
 void dComIfGp_event_reset();
@@ -337,6 +369,7 @@ void cLib_offsetPos(cXyz*, const cXyz*, s16, const cXyz*);
 void cLib_addCalc0(f32*, f32, f32);
 void cLib_addCalcAngleS(s16*, s16, int, s16, s16);
 
+constexpr int Z2SE_EN_PO_SOUL = 0x70000;
 constexpr int Z2SE_OBJ_TBOX_OPEN_A = 0x801FA;
 constexpr int Z2SE_OBJ_TBOX_OPEN_B = 0x801FB;
 constexpr int Z2SE_OBJ_TBOX_OPEN_C = 0x801FC;

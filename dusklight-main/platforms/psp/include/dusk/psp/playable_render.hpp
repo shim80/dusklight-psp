@@ -143,6 +143,14 @@ struct RenderMetrics {
     std::uint32_t hud_cpu_us;
 };
 
+struct MessageOverlayRenderInput {
+    const char* text;
+    std::uint32_t source_message_id;
+    std::uint16_t visible_characters;
+    bool active;
+    bool awaiting_confirm;
+};
+
 struct RealRoomRenderInput {
     Vec3 link_position;
     float link_yaw;
@@ -155,6 +163,7 @@ struct RealRoomRenderInput {
     Vec3 interaction;
     presentation::Profile presentation;
     GameplayState ui_state;
+    const MessageOverlayRenderInput* message_overlay;
     PspLinkRootPoseMetrics root_pose;
     const environment::PspMaterialEnvironmentState* environment;
     const shadow::PspShadowSystem* shadows;

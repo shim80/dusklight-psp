@@ -118,6 +118,22 @@ inline s16 cLib_distanceAngleS(s16 target, s16 current) {
     return static_cast<s16>(target - current);
 }
 
+
+inline f32 cLib_addCalc2(f32* value, f32 target, f32 scale, f32 max_step) {
+    return cLib_addCalc(value, target, scale, max_step, 0.0001f);
+}
+inline int cLib_chaseUC(u8* value, u8 target, u8 step) {
+    if (*value == target) return 1;
+    if (*value > target) {
+        const u8 delta = static_cast<u8>(*value - target);
+        *value = delta <= step ? target : static_cast<u8>(*value - step);
+    } else {
+        const u8 delta = static_cast<u8>(target - *value);
+        *value = delta <= step ? target : static_cast<u8>(*value + step);
+    }
+    return *value == target;
+}
+
 inline int cLib_chaseF(f32* value, f32 target, f32 step) {
     if (step != 0.0f) {
         if (*value > target) {

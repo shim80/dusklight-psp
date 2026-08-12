@@ -39,6 +39,7 @@ dusk_psp_library(dusk_psp_compat
     "${DUSKLIGHT_SOURCE_ROOT}/src/d/actor/d_a_obj_swspinner.cpp"
     "${DUSKLIGHT_SOURCE_ROOT}/src/d/actor/d_a_tag_poFire.cpp"
     "${DUSKLIGHT_SOURCE_ROOT}/src/d/actor/d_a_tbox.cpp"
+    "${DUSKLIGHT_SOURCE_ROOT}/src/d/actor/d_a_demo_item.cpp"
     "${DUSKLIGHT_SOURCE_ROOT}/src/d/actor/d_a_tboxSw.cpp"
     "${DUSK_PSP_ROOT}/src/actor_heap_arena.cpp"
     "${DUSK_PSP_ROOT}/src/actor_profile_registry.cpp"
@@ -50,10 +51,13 @@ dusk_psp_library(dusk_psp_compat
     "${DUSK_PSP_ROOT}/src/original_scene_exit_bridge.cpp"
     "${DUSK_PSP_ROOT}/src/original_spinner_switch_bridge.cpp"
     "${DUSK_PSP_ROOT}/src/original_tbox_bridge.cpp"
+    "${DUSK_PSP_ROOT}/src/original_demo_item_bridge.cpp"
 )
 set_source_files_properties(
     "${DUSKLIGHT_SOURCE_ROOT}/src/d/actor/d_a_tbox.cpp"
+    "${DUSKLIGHT_SOURCE_ROOT}/src/d/actor/d_a_demo_item.cpp"
     "${DUSK_PSP_ROOT}/src/original_tbox_bridge.cpp"
+    "${DUSK_PSP_ROOT}/src/original_demo_item_bridge.cpp"
     PROPERTIES COMPILE_OPTIONS "-g0"
 )
 target_include_directories(dusk_psp_compat BEFORE PUBLIC
@@ -93,6 +97,7 @@ dusk_psp_library(dusk_psp_stage
     "${DUSK_PSP_ROOT}/src/event_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/source_event_script.cpp"
     "${DUSK_PSP_ROOT}/src/source_getitem_camera.cpp"
+    "${DUSK_PSP_ROOT}/src/source_message_bmg.cpp"
     "${DUSK_PSP_ROOT}/src/interaction_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/item_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/stage_runtime.cpp"

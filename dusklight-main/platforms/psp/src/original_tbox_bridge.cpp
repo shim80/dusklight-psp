@@ -1,6 +1,8 @@
 #include "dusk/psp/original_tbox_bridge.hpp"
 
 #include "d/actor/d_a_tbox.h"
+#include "d/actor/d_a_demo_item.h"
+#include "d/d_item.h"
 #include "d/actor/d_a_player.h"
 #include "dusk/psp/process_runtime.hpp"
 #include "dusk/psp/source_event_script.hpp"
@@ -11,6 +13,7 @@
 #include <cstring>
 
 extern const actor_process_profile_definition g_profile_TBOX;
+extern const actor_process_profile_definition g_profile_Demo_Item;
 
 namespace {
 
@@ -255,7 +258,7 @@ int dComIfGp_getPlayerCameraID(int) {
     return 0;
 }
 
-void* dComIfGp_getPlayer(int) {
+fopAc_ac_c* dComIfGp_getPlayer(int) {
     return daPy_getPlayerActorClass();
 }
 
@@ -266,6 +269,16 @@ dStage_roomDt_c* dComIfGp_roomControl_getStatusRoomDt(int) {
 const char* dComIfGp_getStartStageName() {
     return "D_MN10";
 }
+
+int dComIfGp_roomControl_getStayNo() {
+    if (auto* actor = static_cast<fopAc_ac_c*>(dusk::psp::process::current_instance())) {
+        return actor->current.roomNo;
+    }
+    return 2;
+}
+
+BOOL dComIfGs_isTmpBit(u16) { return FALSE; }
+int dComIfG_play_c::getLayerNo(int) { return 0; }
 
 dStage_MapEvent_dt_c* dEvt_control_c::searchMapEventData(u8, s32) {
     return nullptr;
@@ -422,7 +435,34 @@ void dComIfGs_onTbox(int number) {
 }
 
 fpc_ProcID fopAcM_createItemForTrBoxDemo(
-    const cXyz*, u8 item, int, int, const void*, const void*) {
+    const cXyz* position, u8 item, int item_bit, int room,
+    const void* angle_ptr, const void* scale_ptr) {
+    if (g_manager != nullptr &&
+        g_manager->profile_registered(fpcNm_Demo_Item_e)) {
+        const auto* angle = static_cast<const csXyz*>(angle_ptr);
+        const auto* wanted_scale = static_cast<const cXyz*>(scale_ptr);
+        dusk::psp::process::CreateInput input = {};
+        input.process_id = fpcNm_Demo_Item_e;
+        input.parameters = static_cast<u32>(item) |
+            ((static_cast<u32>(item_bit) & 0x7Fu) << 8);
+        input.position[0] = position != nullptr ? position->x : 0.0f;
+        input.position[1] = position != nullptr ? position->y : 0.0f;
+        input.position[2] = position != nullptr ? position->z : 0.0f;
+        input.rotation[0] = angle != nullptr ? angle->x : 0;
+        input.rotation[1] = angle != nullptr ? angle->y : 0;
+        input.rotation[2] = angle != nullptr ? angle->z : 0;
+        input.scale[0] = wanted_scale != nullptr ? wanted_scale->x : 1.0f;
+        input.scale[1] = wanted_scale != nullptr ? wanted_scale->y : 1.0f;
+        input.scale[2] = wanted_scale != nullptr ? wanted_scale->z : 1.0f;
+        input.room = static_cast<s8>(room);
+        input.layer = -1;
+        dusk::psp::process::ProcessHandle handle = {};
+        if (!g_manager->create(input, &handle)) return fpcM_ERROR_PROCESS_ID_e;
+        void* actor = g_manager->instance(handle);
+        if (actor == nullptr) return fpcM_ERROR_PROCESS_ID_e;
+        ++g_metrics.items_created;
+        return g_manager->id_of(actor);
+    }
     return create_item(item);
 }
 
@@ -497,7 +537,8 @@ namespace dusk::psp::compat {
 bool register_original_tbox_profile(
     process::PspProcessManager* manager) {
     return manager != nullptr &&
-           manager->register_profile(&g_profile_TBOX);
+           manager->register_profile(&g_profile_TBOX) &&
+           manager->register_profile(&g_profile_Demo_Item);
 }
 
 bool original_tbox_profile_valid() {
@@ -716,6 +757,14 @@ bool sample_original_tbox_interaction(
 
 bool original_tbox_demo_item_pending(
     std::uint32_t process_id, std::uint8_t* item_no) {
+    if (g_manager != nullptr) {
+        void* raw = g_manager->search_by_id(process_id);
+        if (raw != nullptr && g_manager->process_id_of(raw) == fpcNm_Demo_Item_e) {
+            auto* actor = static_cast<daDitem_c*>(raw);
+            if (item_no != nullptr) *item_no = actor->getItemNo();
+            return !actor->chkDead();
+        }
+    }
     const PendingDemoItem* item = pending_item_const(process_id);
     if (item == nullptr) return false;
     if (item_no != nullptr) *item_no = item->item_no;
@@ -723,29 +772,55 @@ bool original_tbox_demo_item_pending(
 }
 
 bool original_tbox_demo_item_visible(std::uint32_t process_id) {
+    if (g_manager != nullptr) {
+        void* raw = g_manager->search_by_id(process_id);
+        if (raw != nullptr && g_manager->process_id_of(raw) == fpcNm_Demo_Item_e) {
+            auto* actor = static_cast<daDitem_c*>(raw);
+            return actor->chkDraw() && !actor->chkDead();
+        }
+    }
     const PendingDemoItem* item = pending_item_const(process_id);
     return item != nullptr && item->visible && !item->dead;
 }
 
 bool original_tbox_demo_item_show(std::uint32_t process_id) {
+    if (g_manager != nullptr) {
+        void* raw = g_manager->search_by_id(process_id);
+        if (raw != nullptr && g_manager->process_id_of(raw) == fpcNm_Demo_Item_e) {
+            auto* actor = static_cast<daDitem_c*>(raw);
+            if (actor->chkDead()) return false;
+            if (!actor->chkDraw()) { actor->show(); ++g_metrics.items_shown; }
+            return true;
+        }
+    }
     PendingDemoItem* item = pending_item(process_id);
     if (item == nullptr || item->dead) return false;
-    if (!item->visible) {
-        item->visible = true;
-        ++g_metrics.items_shown;
-    }
+    if (!item->visible) { item->visible = true; ++g_metrics.items_shown; }
     return true;
 }
 
 bool original_tbox_demo_item_kill_and_commit(std::uint32_t process_id) {
+    if (g_manager != nullptr) {
+        void* raw = g_manager->search_by_id(process_id);
+        if (raw != nullptr && g_manager->process_id_of(raw) == fpcNm_Demo_Item_e) {
+            auto* actor = static_cast<daDitem_c*>(raw);
+            if (actor->chkDead() || g_items == nullptr) return false;
+            const std::uint32_t before = g_items->quantity(actor->getItemNo());
+            actor->dead();
+            ++g_metrics.items_killed;
+            actor->actionEvent();
+            const std::uint32_t after = g_items->quantity(actor->getItemNo());
+            if (after != before + 1u) return false;
+            ++g_metrics.items_committed;
+            return true;
+        }
+    }
     PendingDemoItem* item = pending_item(process_id);
     if (item == nullptr || item->dead || item->committed ||
         g_items == nullptr || item->source_actor == nullptr) return false;
-    item->dead = true;
-    ++g_metrics.items_killed;
+    item->dead = true; ++g_metrics.items_killed;
     if (!g_items->acquire(item->item_no, 1, item->source_actor)) return false;
-    item->committed = true;
-    ++g_metrics.items_committed;
+    item->committed = true; ++g_metrics.items_committed;
     return true;
 }
 
@@ -754,3 +829,10 @@ const OriginalTboxMetrics& original_tbox_metrics() {
 }
 
 }  // namespace dusk::psp::compat
+
+
+void execItemGet(u8 item_no) {
+    if (g_items != nullptr) {
+        g_items->acquire(item_no, 1, dusk::psp::process::current_instance());
+    }
+}

@@ -7,7 +7,7 @@ namespace dusk::psp::model {
 
 class PspActorHeapArena {
 public:
-    static constexpr std::uint32_t kCapacity = 0x2200;
+    static constexpr std::uint32_t kCapacity = 0x3400;
     bool open(void* owner, std::uint32_t requested);
     void* allocate(std::uint32_t bytes, std::uint32_t alignment);
     void seal();

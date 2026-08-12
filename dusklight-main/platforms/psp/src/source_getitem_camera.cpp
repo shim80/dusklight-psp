@@ -102,9 +102,9 @@ float SourceGetItemCamera::spline_value(
     std::uint32_t key = static_cast<std::uint32_t>(point);
     float t = point - static_cast<float>(key);
     if (sample == total - 1u) t = 1.0f;
-    const std::uint32_t k0 = std::min(key, 5u);
-    const std::uint32_t k1 = std::min(key + 1u, 5u);
-    const std::uint32_t k2 = std::min(key + 2u, 5u);
+    const std::uint32_t k0 = std::min<std::uint32_t>(key, 5u);
+    const std::uint32_t k1 = std::min<std::uint32_t>(key + 1u, 5u);
+    const std::uint32_t k2 = std::min<std::uint32_t>(key + 2u, 5u);
     const float inv = 1.0f - t;
     return inv*inv*0.5f*kCurve[k0] +
            (t*inv + 0.5f)*kCurve[k1] +

@@ -663,3 +663,27 @@ target_compile_features(source_getitem_camera_host_test PRIVATE cxx_std_20)
 target_compile_options(source_getitem_camera_host_test PRIVATE
     -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
 )
+
+add_executable(source_message_bmg_host_test
+    source_message_bmg_host_test.cpp
+    "${DUSK_PSP_ROOT}/src/source_message_bmg.cpp"
+)
+target_include_directories(source_message_bmg_host_test PRIVATE
+    "${DUSK_PSP_ROOT}/include"
+)
+target_compile_features(source_message_bmg_host_test PRIVATE cxx_std_20)
+target_compile_options(source_message_bmg_host_test PRIVATE
+    -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
+)
+
+add_executable(full_ascii_dpui_host_test
+    full_ascii_dpui_host_test.cpp
+    "${DUSK_PSP_ROOT}/src/playable_package.cpp"
+)
+target_include_directories(full_ascii_dpui_host_test PRIVATE
+    "${DUSK_PSP_ROOT}/include"
+)
+target_compile_features(full_ascii_dpui_host_test PRIVATE cxx_std_20)
+target_compile_options(full_ascii_dpui_host_test PRIVATE
+    -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
+)

@@ -1670,23 +1670,81 @@ void original_ui_sprite(
     sceGuColor(0xffffffffu);
 }
 
+void original_ui_text_bounded(
+    const char* text,
+    std::uint16_t visible_characters,
+    int x,
+    int baseline,
+    RenderMetrics* metrics) {
+    if (text == nullptr) return;
+    const int origin_x = x;
+    std::uint16_t consumed = 0;
+    for (const char* cursor = text; *cursor != '\0' &&
+         consumed < visible_characters; ++cursor, ++consumed) {
+        if (*cursor == '\n') {
+            x = origin_x;
+            baseline += 23;
+            continue;
+        }
+        if (*cursor == '\r') continue;
+        const std::uint16_t id = static_cast<std::uint16_t>(
+            128 + static_cast<unsigned char>(*cursor));
+        const std::uint8_t* item = ui_record(id);
+        if (item == nullptr) continue;
+        // DPUI font records store a cropped source glyph plus its bearing
+        // inside the original 24x24 BFN cell in +4/+6. Scale those source
+        // metrics by the same 18/24 ratio used by the legacy full-cell path.
+        const int bearing_x = read_u16(item + 4);
+        const int bearing_y = read_u16(item + 6);
+        const int source_width = read_u16(item + 16);
+        const int source_height = read_u16(item + 18);
+        const int draw_x = x + (bearing_x * 3 + 2) / 4;
+        const int draw_y = baseline - 18 + (bearing_y * 3 + 2) / 4;
+        const int draw_width = std::max(1, (source_width * 3 + 3) / 4);
+        const int draw_height = std::max(1, (source_height * 3 + 3) / 4);
+        original_ui_sprite(
+            id, draw_x, draw_y, draw_width, draw_height, metrics);
+        const int advance = read_u16(item + 28);
+        x += std::max(5, advance * 3 / 4);
+    }
+}
+
 void original_ui_text(
     const char* text,
     int x,
     int baseline,
     RenderMetrics* metrics) {
-    for (const char* cursor = text; *cursor != '\0'; ++cursor) {
-        const std::uint16_t id = static_cast<std::uint16_t>(
-            128 + static_cast<unsigned char>(*cursor));
-        const std::uint8_t* item = ui_record(id);
-        if (item == nullptr) {
-            continue;
-        }
-        original_ui_sprite(
-            id, x, baseline - 18, 18, 18, metrics);
-        const int advance = read_u16(item + 28);
-        x += std::max(5, advance * 3 / 4);
+    original_ui_text_bounded(text, 0xffffu, x, baseline, metrics);
+}
+
+void draw_message_overlay(
+    const MessageOverlayRenderInput* overlay,
+    RenderMetrics* metrics) {
+    if (overlay == nullptr || !overlay->active || overlay->text == nullptr) {
+        return;
     }
+    sceGuDisable(GU_DEPTH_TEST);
+    sceGuDisable(GU_CULL_FACE);
+    sceGuEnable(GU_BLEND);
+    sceGuBlendFunc(
+        GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+    // Simplified PSP presentation: source text/lifetime are authoritative,
+    // while the heavy GameCube message-pane effects are intentionally deferred.
+    rectangle(26, 145, 428, 119, 0xd010151du, metrics);
+    rectangle(26, 145, 428, 2, 0xffc8a85cu, metrics);
+    rectangle(26, 262, 428, 2, 0xffc8a85cu, metrics);
+    rectangle(26, 145, 2, 119, 0xffc8a85cu, metrics);
+    rectangle(452, 145, 2, 119, 0xffc8a85cu, metrics);
+    bind(g_ui);
+    sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
+    sceGuTexScale(1.0f, 1.0f);
+    original_ui_text_bounded(
+        overlay->text, overlay->visible_characters,
+        42, 168, metrics);
+    if (overlay->awaiting_confirm) {
+        original_ui_sprite(30, 416, 228, 28, 28, metrics);
+    }
+    sceGuDisable(GU_BLEND);
 }
 
 void draw_original_ui(
@@ -2512,6 +2570,7 @@ bool render_real_room_frame_with_models(
     const std::uint64_t hud_begin = monotonic_microseconds();
     if (!opaque_only) {
         draw_ui(effective.ui_state, metrics);
+        draw_message_overlay(effective.message_overlay, metrics);
     }
     metrics->hud_cpu_us = static_cast<std::uint32_t>(
         monotonic_microseconds() - hud_begin);
@@ -2570,6 +2629,7 @@ bool render_real_actor_frame(
     draw_real_room_entities(input, metrics);
     draw_root_pose_debug(input, metrics);
     draw_ui(input.ui_state, metrics);
+    draw_message_overlay(input.message_overlay, metrics);
     const int bytes = sceGuFinish();
     if (bytes < 0 || static_cast<std::uint32_t>(bytes) > g_list_bytes ||
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE) < 0) {

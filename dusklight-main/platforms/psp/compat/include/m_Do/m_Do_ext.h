@@ -5,14 +5,32 @@
 #include "dusk/psp/bck_runtime.hpp"
 
 #include <cstdint>
+#include <cstring>
 
 namespace dusk::psp::model {
 class PspStaticModelRuntime;
 }
 
+class J3DShape { public: void hide() {} };
+class J3DMaterial { public: J3DShape* getShape() { static J3DShape shape; return &shape; } };
+class JUTNameTab { public: const char* getName(std::uint16_t) const { return ""; } };
+class J3DMaterialTable { public: JUTNameTab* getMaterialName() { static JUTNameTab tab; return &tab; } };
+class J3DJoint {
+public:
+    const cXyz* getMax() const { return &max_; }
+    void setMax(const cXyz& value) { max_ = value; }
+private:
+    cXyz max_ = {0.0f, 20.0f, 0.0f};
+};
+
 class J3DModelData {
 public:
     const void* model_bytes() const;
+    J3DJoint* getJointNodePointer(std::uint16_t) { return &joint_stub_; }
+    const J3DJoint* getJointNodePointer(std::uint16_t) const { return &joint_stub_; }
+    J3DMaterialTable& getMaterialTable() { return material_table_; }
+    std::uint16_t getMaterialNum() const { return 0; }
+    J3DMaterial* getMaterialNodePointer(std::uint16_t) { return &material_stub_; }
     std::uint32_t model_size() const;
     const void* texture_bytes() const;
     std::uint32_t texture_size() const;
@@ -45,6 +63,9 @@ private:
     float animation_frame_ = 0.0f;
     std::uint32_t animation_joints_ = 0;
     std::uint32_t animation_applications_ = 0;
+    J3DJoint joint_stub_;
+    J3DMaterialTable material_table_;
+    J3DMaterial material_stub_;
 };
 
 class J3DAnmTransform {
@@ -147,6 +168,13 @@ public:
     const cXyz& getBaseScale() const;
     void* owner() const;
     bool active() const;
+    void duskPspConfigureStub(J3DModelData* data, void* owner) {
+        data_ = data; owner_ = owner; active_ = true;
+        std::memset(mBaseTransformMtx, 0, sizeof(mBaseTransformMtx));
+        mBaseTransformMtx[0][0] = 1.0f;
+        mBaseTransformMtx[1][1] = 1.0f;
+        mBaseTransformMtx[2][2] = 1.0f;
+    }
 
 private:
     friend class dusk::psp::model::PspStaticModelRuntime;

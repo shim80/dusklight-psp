@@ -17,6 +17,8 @@ struct cXyz {
     constexpr cXyz(f32 wanted_x, f32 wanted_y, f32 wanted_z)
         : x(wanted_x), y(wanted_y), z(wanted_z) {}
 
+    void setall(f32 value) { x = value; y = value; z = value; }
+
     void set(f32 wanted_x, f32 wanted_y, f32 wanted_z) {
         x = wanted_x;
         y = wanted_y;
@@ -215,10 +217,12 @@ enum : u16 {
 
 enum : s16 {
     fpcNm_SCENE_EXIT_e = 0x030C,
+    fpcNm_Demo_Item_e = 0x021D,
 };
 
 enum {
     fpcDwPi_SCENE_EXIT_e = 761,
+    fpcDwPi_Demo_Item_e = 720,
     fopAcStts_NOPAUSE_e = 1 << 17,
     fopAcStts_UNK_0x40000_e = 1 << 18,
     fopAcStts_UNK_0x4000_e = 1 << 14,
@@ -343,6 +347,17 @@ int fopAcM_seenActorAngleY(
     const fopAc_ac_c*, const fopAc_ac_c*);
 bool fopAcM_myRoomSearchEnemy(int room);
 void fopAcM_posMoveF(fopAc_ac_c*, const cXyz*);
+
+inline void fopAcM_onDraw(fopAc_ac_c* actor) { actor->actor_condition |= 0x40; }
+inline void fopAcM_offDraw(fopAc_ac_c* actor) { actor->actor_condition &= static_cast<u8>(~0x40); }
+inline void fopAcM_addAngleY(fopAc_ac_c* actor, s16 target, s16 step) {
+    const s16 delta = static_cast<s16>(target - actor->current.angle.y);
+    if (delta > step) actor->current.angle.y = static_cast<s16>(actor->current.angle.y + step);
+    else if (delta < -step) actor->current.angle.y = static_cast<s16>(actor->current.angle.y - step);
+    else actor->current.angle.y = target;
+    actor->shape_angle.y = actor->current.angle.y;
+}
+
 inline void fopAcM_setWarningMessage(...) {}
 inline void fopAcM_setEffectMtx(fopAc_ac_c*, J3DModelData*) {}
 

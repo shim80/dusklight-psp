@@ -283,7 +283,7 @@ PackageError validate_dpui(
     const std::uint32_t atlas = read_u32(bytes + 40);
     const std::uint32_t atlas_bytes = read_u32(bytes + 44);
     const std::uint16_t version = read_u16(bytes + 4);
-    const std::uint32_t maximum_quads = version == 2 ? 96 : 32;
+    const std::uint32_t maximum_quads = version == 2 ? 128 : 32;
     if (width == 0 || height == 0 || width > 512 || height > 512 ||
         read_u32(bytes + 24) != 2 || quads == 0 ||
         quads > maximum_quads ||
@@ -320,17 +320,21 @@ PackageError validate_dpui(
             }
             identities[id] = true;
         }
-        constexpr std::uint16_t required[] = {
+        constexpr std::uint16_t required_sprites[] = {
             0, 1, 2, 3,
             10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
             20, 30, 40, 41, 42, 43,
-            128 + ' ', 128 + 'E', 128 + 'R',
-            128 + 'e', 128 + 'i', 128 + 'm',
-            128 + 'o', 128 + 's',
-            128 + 't', 128 + 'u', 128 + 'x',
         };
-        for (std::uint16_t id : required) {
+        for (std::uint16_t id : required_sprites) {
             if (!identities[id]) {
+                return PackageError::Missing;
+            }
+        }
+        // DPUI v2 is now the common text surface for pause/menu/message UI.
+        // Require the complete printable ASCII range from the source Rodan
+        // font so missing letters cannot silently turn into blank glyphs.
+        for (std::uint16_t code = 0x20; code <= 0x7e; ++code) {
+            if (!identities[128 + code]) {
                 return PackageError::Missing;
             }
         }

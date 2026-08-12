@@ -14,8 +14,11 @@ bool dusk_psp_compat_scene_change_started();
 class daPy_py_c : public fopAc_ac_c {
 public:
     static daMidna_c* getMidnaActor();
-    bool checkNowWolf() const { return false; }
+    static bool checkNowWolf() { return false; }
     bool checkTreasureRupeeReturn(u8) const { return false; }
+    bool checkHorseRide() const { return false; }
+    const cXyz* getLeftFootPosP() const { return &left_foot_pos_; }
+    void duskPspSetLeftFootPos(const cXyz& pos) { left_foot_pos_ = pos; }
     float getBaseAnimeFrame() const { return mDuskPspBaseAnimeFrame; }
     void duskPspSetBaseAnimeFrame(float frame) { mDuskPspBaseAnimeFrame = frame; }
     const cXyz* getKandelaarFlamePos() const { return nullptr; }
@@ -38,6 +41,7 @@ public:
 
 private:
     float mDuskPspBaseAnimeFrame = 0.0f;
+    cXyz left_foot_pos_ = {};
 };
 
 daPy_py_c* daPy_getPlayerActorClass();

@@ -53,7 +53,8 @@ inline s8 dComIfGp_getReverb(int) {
     return 0;
 }
 
-inline void* dComIfGp_particle_set(
+class JPABaseEmitter;
+inline JPABaseEmitter* dComIfGp_particle_set(
     u16, const cXyz*, const csXyz*, const cXyz*, u8,
     void*, s8, const void*, const void*, const cXyz*) {
     return nullptr;

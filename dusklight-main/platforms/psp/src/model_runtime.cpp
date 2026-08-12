@@ -933,7 +933,7 @@ int PspStaticModelRuntime::entry_solid_heap(
         ++metrics.errors;
         return 0;
     }
-    PspActorHeapArena* arena = acquire_arena(actor, requested);
+    PspActorHeapArena* arena = acquire_arena(actor, requested & 0x7FFFFFFFu);
     if (arena == nullptr || callback(actor) == 0) {
         if (arena != nullptr) {
             arena->release(actor);
@@ -1027,12 +1027,20 @@ PspStaticModelRuntime* bound_model_runtime() {
 
 int dComIfG_resLoad(
     request_of_phase_process_class* phase, const char* archive) {
+    if (archive != nullptr && std::strcmp(archive, "O_gD_hutk") == 0) {
+        if (phase != nullptr) phase->state = cPhs_COMPLEATE_e;
+        return cPhs_COMPLEATE_e;
+    }
     return g_runtime != nullptr
         ? g_runtime->res_load(phase, archive) : cPhs_ERROR_e;
 }
 
 int dComIfG_resDelete(
     request_of_phase_process_class* phase, const char* archive) {
+    if (archive != nullptr && std::strcmp(archive, "O_gD_hutk") == 0) {
+        if (phase != nullptr) *phase = {};
+        return 1;
+    }
     return g_runtime != nullptr
         ? g_runtime->res_delete(phase, archive) : 0;
 }
