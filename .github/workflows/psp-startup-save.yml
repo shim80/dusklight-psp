@@ -37,7 +37,7 @@ jobs:
       - name: Bootstrap pinned PSP toolchain and PPSSPP
         run: ./scripts/bootstrap-repro.sh
 
-      - name: Build PSP quest-log EBOOT
+      - name: Build PSP probe and reconstructed canonical EBOOT
         run: |
           export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
           export PSPSDK="$PSPDEV/psp/sdk"
@@ -46,8 +46,15 @@ jobs:
           cmake --build .work/build/startup-save-psp -j 4
           test -f .work/build/startup-save-psp/EBOOT.PBP
           sha256sum .work/build/startup-save-psp/EBOOT.PBP | tee .work/startup-save-eboot.sha256
+          psp-cmake -S test/dusklight-psp -B .work/build/dusklight-psp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/dusklight-psp -j 4
+          test -f .work/build/dusklight-psp/EBOOT.PBP
+          test -f .work/build/dusklight-psp/dusklight_psp.elf
+          "$PSPDEV/bin/psp-objdump" -f .work/build/dusklight-psp/dusklight_psp.elf | tee .work/canonical-objdump.log
+          grep -F 'architecture: mips:allegrex' .work/canonical-objdump.log
+          sha256sum .work/build/dusklight-psp/EBOOT.PBP | tee .work/canonical-eboot.sha256
 
-      - name: Run EBOOT in pinned PPSSPP and capture framebuffer
+      - name: Run canonical EBOOT in pinned PPSSPP and capture framebuffer
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
@@ -64,14 +71,14 @@ jobs:
           XVFB_PID=$!
           export DISPLAY=:99
           sleep 2
-          .work/ppsspp-app/squashfs-root/AppRun .work/build/startup-save-psp/EBOOT.PBP >.work/ppsspp.log 2>&1 &
+          .work/ppsspp-app/squashfs-root/AppRun .work/build/dusklight-psp/EBOOT.PBP >.work/ppsspp.log 2>&1 &
           PPSSPP_PID=$!
           sleep 8
           cat .work/ppsspp.log || true
-          grep -F 'Booted .work/build/startup-save-psp/EBOOT.PBP' .work/ppsspp.log || exit 1
-          import -window root .work/dusklight-psp-save-select.png || exit 1
-          test "$(stat -c %s .work/dusklight-psp-save-select.png)" -gt 1000 || exit 1
-          identify .work/dusklight-psp-save-select.png || exit 1
+          grep -F 'Booted .work/build/dusklight-psp/EBOOT.PBP' .work/ppsspp.log || exit 1
+          import -window root .work/dusklight-psp-canonical.png || exit 1
+          test "$(stat -c %s .work/dusklight-psp-canonical.png)" -gt 1000 || exit 1
+          identify .work/dusklight-psp-canonical.png || exit 1
           kill "$PPSSPP_PID" 2>/dev/null || true
           pkill -f 'PPSSPP|ppsspp' 2>/dev/null || true
           kill "$XVFB_PID" 2>/dev/null || true
@@ -86,10 +93,14 @@ jobs:
           path: |
             .work/build/startup-save-psp/EBOOT.PBP
             .work/startup-save-eboot.sha256
+            .work/build/dusklight-psp/EBOOT.PBP
+            .work/build/dusklight-psp/dusklight_psp.elf
+            .work/canonical-eboot.sha256
+            .work/canonical-objdump.log
             .work/startup-save-host.log
             .work/startup-save-integration-host.log
             .work/psp-controls-host.log
-            .work/dusklight-psp-save-select.png
+            .work/dusklight-psp-canonical.png
             .work/ppsspp.log
             .work/xvfb.log
             .work/pulseaudio.log
