@@ -11,6 +11,7 @@ add_executable(startup_save_psp
     "${DUSK_PSP_ROOT}/src/startup_package.cpp"
     "${DUSK_PSP_ROOT}/src/startup_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/startup_save_flow.cpp"
+    "${DUSK_PSP_ROOT}/src/psp_controls.cpp"
 )
 target_include_directories(startup_save_psp PRIVATE "${DUSK_PSP_ROOT}/include")
 target_compile_features(startup_save_psp PRIVATE cxx_std_20)
