@@ -36,9 +36,18 @@ Host markers retained by CI:
 
 `test/dusklight-psp/` now exists again as an explicitly reconstructed canonical target. It is not presented as byte-for-byte recovery of the historical launcher. It currently shares the validated startup/save/control entry while the asset-backed game driver is rebuilt from preserved runtime contracts.
 
-The canonical target compiles for Allegrex and has previously booted as a real EBOOT in pinned PPSSPP 1.20.4. Historical successful reconstruction proof: Actions run `31632739937`, canonical EBOOT SHA-256 `bafad3f130f90595db345d388da159610a4397f1f79df3b69c7ae62aca6d5f8e`.
+The current canonical checkpoint is green on GitHub Actions run `31638286245`, commit `e202afc6bbe2d9afcb6e9f07e34729943142a97c`:
 
-That proves executable reconstruction and boot only, not gameplay parity.
+- save/startup/control host tests passed;
+- canonical F_SP108 asset contract host test passed;
+- pinned PSPDEV bootstrap passed;
+- `platform.cpp` and `canonical_assets.cpp` compiled into the Allegrex target;
+- `psp-objdump` confirmed `architecture: mips:allegrex`;
+- the generated canonical EBOOT booted in pinned PPSSPP 1.20.4.
+
+Canonical EBOOT SHA-256: `7a2f47b8130321829b506dc2f6c816aed81ec8cee1f2eacb13cfbc69f0d0793a`.
+
+This remains executable/boot proof only, not asset-backed gameplay parity and not a release candidate.
 
 ## Canonical first-room asset contract
 
@@ -55,9 +64,7 @@ Host validation marker:
 
 `CANONICAL_ASSETS_HOST_OK stage=F_SP108 room=1 start=21 layer=0 paths=4 fail_closed=1`
 
-Actions run `31638020278` proved the updated host semantics and compiled both `platform.cpp` and `canonical_assets.cpp` into the canonical Allegrex target. Canonical EBOOT SHA-256 from that build: `7a2f47b8130321829b506dc2f6c816aed81ec8cee1f2eacb13cfbc69f0d0793a`.
-
-The PPSSPP step of that run failed before EBOOT boot because the refreshed GitHub runner exposed no Vulkan physical device. This is an infrastructure graphics failure, not a gameplay result. Commit `5aab9dcf50189f2f552270b859d9554bf6fc58b7` adds Mesa's software Vulkan driver to make the PPSSPP CI graphics path deterministic; that retry must pass before the new EBOOT boot proof is recorded.
+The GitHub runner currently reports no Vulkan physical device, but with Mesa installed PPSSPP reliably falls back to OpenGL and reaches the canonical EBOOT boot marker. This is CI infrastructure behavior only and has no gameplay-parity meaning.
 
 ## Screenshot policy
 
