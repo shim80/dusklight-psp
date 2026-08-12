@@ -59,7 +59,10 @@ void copy_stage(std::array<char, kStageNameBytes>* output, const char* stage) {
     if (stage == nullptr) {
         return;
     }
-    std::strncpy(output->data(), stage, output->size() - 1);
+    const std::size_t length = std::strlen(stage);
+    const std::size_t copy_length =
+        length < output->size() - 1 ? length : output->size() - 1;
+    std::memcpy(output->data(), stage, copy_length);
 }
 
 }  // namespace
