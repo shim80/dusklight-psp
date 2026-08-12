@@ -41,10 +41,11 @@ jobs:
           git config user.name 'shim80'
           git config user.email '22941009+shim80@users.noreply.github.com'
           git add -A
-          git diff --cached --check
           if git diff --cached --quiet; then
             echo 'No tooling changes were materialized.' >&2
             exit 1
           fi
+          # Historical .patch files are preserved byte-for-byte, including
+          # whitespace that `git diff --check` intentionally flags.
           git commit -m 'Archive recovered tooling and reproducibility scripts'
           git push origin HEAD:main
