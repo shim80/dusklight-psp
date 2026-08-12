@@ -1,45 +1,88 @@
 #include "dusk/psp/canonical_assets.hpp"
 
-#include <cassert>
 #include <cstdio>
 #include <cstring>
 
 namespace game = dusk::psp::game;
 namespace save = dusk::psp::save;
 
+namespace {
+
+bool expect(bool condition, const char* message) {
+    if (condition) {
+        return true;
+    }
+    std::fprintf(stderr, "CANONICAL_ASSETS_HOST_FAIL %s\n", message);
+    return false;
+}
+
+}  // namespace
+
 int main() {
     const save::StartContext start = save::default_new_game_start();
-    assert(std::strcmp(start.stage.data(), "F_SP108") == 0);
-    assert(start.room == 1);
-    assert(start.start_point == 21);
-    assert(start.layer == 0);
+    if (!expect(std::strcmp(start.stage.data(), "F_SP108") == 0, "stage") ||
+        !expect(start.room == 1, "room") ||
+        !expect(start.start_point == 21, "start_point") ||
+        !expect(start.layer == 0, "layer")) {
+        return 1;
+    }
 
     game::CanonicalRoomAssets assets = {};
-    assert(game::resolve_canonical_room_assets(start, &assets) ==
-           game::CanonicalAssetError::Ok);
-    assert(std::strcmp(assets.model, "data/stages/F_SP108/R01/room.dprm") == 0);
-    assert(std::strcmp(assets.textures, "data/stages/F_SP108/R01/room.dptx") == 0);
-    assert(std::strcmp(assets.collision, "data/stages/F_SP108/R01/room.dpcl") == 0);
-    assert(std::strcmp(assets.scene, "data/stages/F_SP108/R01/room.dpsc") == 0);
+    if (!expect(
+            game::resolve_canonical_room_assets(start, &assets) ==
+                game::CanonicalAssetError::Ok,
+            "resolve_default") ||
+        !expect(
+            std::strcmp(assets.model, "data/stages/F_SP108/R01/room.dprm") == 0,
+            "model_path") ||
+        !expect(
+            std::strcmp(assets.textures, "data/stages/F_SP108/R01/room.dptx") == 0,
+            "texture_path") ||
+        !expect(
+            std::strcmp(assets.collision, "data/stages/F_SP108/R01/room.dpcl") == 0,
+            "collision_path") ||
+        !expect(
+            std::strcmp(assets.scene, "data/stages/F_SP108/R01/room.dpsc") == 0,
+            "scene_path")) {
+        return 2;
+    }
 
     save::StartContext unsupported = start;
     unsupported.room = 2;
-    assert(game::resolve_canonical_room_assets(unsupported, &assets) ==
-           game::CanonicalAssetError::UnsupportedRoom);
+    if (!expect(
+            game::resolve_canonical_room_assets(unsupported, &assets) ==
+                game::CanonicalAssetError::UnsupportedRoom,
+            "unsupported_room")) {
+        return 3;
+    }
     unsupported = start;
     unsupported.start_point = 20;
-    assert(game::resolve_canonical_room_assets(unsupported, &assets) ==
-           game::CanonicalAssetError::UnsupportedStartPoint);
+    if (!expect(
+            game::resolve_canonical_room_assets(unsupported, &assets) ==
+                game::CanonicalAssetError::UnsupportedStartPoint,
+            "unsupported_start")) {
+        return 4;
+    }
     unsupported = start;
     unsupported.layer = 1;
-    assert(game::resolve_canonical_room_assets(unsupported, &assets) ==
-           game::CanonicalAssetError::UnsupportedLayer);
+    if (!expect(
+            game::resolve_canonical_room_assets(unsupported, &assets) ==
+                game::CanonicalAssetError::UnsupportedLayer,
+            "unsupported_layer")) {
+        return 5;
+    }
     unsupported = start;
     std::memcpy(unsupported.stage.data(), "D_MN05A", 8);
-    assert(game::resolve_canonical_room_assets(unsupported, &assets) ==
-           game::CanonicalAssetError::UnsupportedStage);
-    assert(game::resolve_canonical_room_assets(start, nullptr) ==
-           game::CanonicalAssetError::NullOutput);
+    if (!expect(
+            game::resolve_canonical_room_assets(unsupported, &assets) ==
+                game::CanonicalAssetError::UnsupportedStage,
+            "unsupported_stage") ||
+        !expect(
+            game::resolve_canonical_room_assets(start, nullptr) ==
+                game::CanonicalAssetError::NullOutput,
+            "null_output")) {
+        return 6;
+    }
 
     std::puts(
         "CANONICAL_ASSETS_HOST_OK stage=F_SP108 room=1 start=21 layer=0 "
