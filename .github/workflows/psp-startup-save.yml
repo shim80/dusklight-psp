@@ -43,11 +43,11 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
-          set -euxo pipefail
+          set -uxo pipefail
           PPSSPP="$GITHUB_WORKSPACE/.tools/ppsspp/PPSSPP-v1.20.4-anylinux-x86_64.AppImage"
           mkdir -p .work/ppsspp-app
           cd .work/ppsspp-app
-          "$PPSSPP" --appimage-extract >/dev/null
+          "$PPSSPP" --appimage-extract >/dev/null || exit 1
           cd "$GITHUB_WORKSPACE"
           Xvfb :99 -screen 0 1280x720x24 >.work/xvfb.log 2>&1 &
           XVFB_PID=$!
@@ -56,26 +56,34 @@ jobs:
           .work/ppsspp-app/squashfs-root/AppRun .work/build/startup-save-psp/EBOOT.PBP >.work/ppsspp.log 2>&1 &
           PPSSPP_PID=$!
           sleep 8
-          kill -0 "$PPSSPP_PID"
+          cat .work/ppsspp.log || true
+          pgrep -a -f 'PPSSPP|ppsspp' || true
           WINDOW_ID="$(xdotool search --name 'PPSSPP' 2>/dev/null | head -n 1 || true)"
-          if [ -n "$WINDOW_ID" ]; then
-            import -window "$WINDOW_ID" .work/dusklight-psp-save-select.png
-          else
-            import -window root .work/dusklight-psp-save-select.png
+          if [ -z "$WINDOW_ID" ]; then
+            import -window root .work/ppsspp-no-window.png || true
+            kill "$PPSSPP_PID" 2>/dev/null || true
+            kill "$XVFB_PID" 2>/dev/null || true
+            echo 'PPSSPP emulator window not found' >&2
+            exit 1
           fi
-          test -s .work/dusklight-psp-save-select.png
-          identify .work/dusklight-psp-save-select.png
-          kill "$PPSSPP_PID" || true
-          kill "$XVFB_PID" || true
+          import -window "$WINDOW_ID" .work/dusklight-psp-save-select.png || exit 1
+          test -s .work/dusklight-psp-save-select.png || exit 1
+          identify .work/dusklight-psp-save-select.png || exit 1
+          kill "$PPSSPP_PID" 2>/dev/null || true
+          pkill -f 'PPSSPP|ppsspp' 2>/dev/null || true
+          kill "$XVFB_PID" 2>/dev/null || true
 
       - name: Upload PSP EBOOT and PPSSPP evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dusklight-psp-startup-save-checkpoint
-          if-no-files-found: error
+          if-no-files-found: warn
           path: |
             .work/build/startup-save-psp/EBOOT.PBP
             .work/startup-save-eboot.sha256
             .work/startup-save-host.log
             .work/dusklight-psp-save-select.png
+            .work/ppsspp-no-window.png
             .work/ppsspp.log
+            .work/xvfb.log
