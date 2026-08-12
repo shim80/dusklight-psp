@@ -9,13 +9,15 @@ set(DUSK_PSP_ROOT "${DUSKLIGHT_SOURCE_ROOT}/platforms/psp")
 # validation scripts still depend on this target/path. Until the asset-backed
 # canonical game driver is recovered/rebuilt, reuse the already validated
 # startup/save/control PSP entry source so there is one executable boundary
-# and no divergent input/save implementation. Compile the platform and
-# canonical asset-contract runtime here so packaged-room handoff is gated on
-# Allegrex before the asset-backed driver is wired in.
+# and no divergent input/save implementation. Compile the platform, exact-size
+# room loader and package validators here so the real packaged-room handoff is
+# Allegrex-gated before it becomes the launcher entrypoint.
 add_executable(dusklight_psp
     ../startup-save-psp/main.cpp
     "${DUSK_PSP_ROOT}/src/platform.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_assets.cpp"
+    "${DUSK_PSP_ROOT}/src/canonical_room_loader.cpp"
+    "${DUSK_PSP_ROOT}/src/room_package.cpp"
     "${DUSK_PSP_ROOT}/src/save_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/save_storage.cpp"
     "${DUSK_PSP_ROOT}/src/startup_package.cpp"
