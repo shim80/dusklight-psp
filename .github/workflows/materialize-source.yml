@@ -1,0 +1,51 @@
+name: Materialize PSP source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/materialize-source.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reconstruct verified PSP source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat source-overlay/code-overlay-b64/part* | base64 -d > /tmp/dusklight-psp-code-overlay.tar.xz
+          echo 'ce56f4d674c2faad781dfd53ae1ff3a5e7110d29a3ecfab756947c099a582527  /tmp/dusklight-psp-code-overlay.tar.xz' | sha256sum -c -
+          xz -t /tmp/dusklight-psp-code-overlay.tar.xz
+          tar -xJf /tmp/dusklight-psp-code-overlay.tar.xz -C .
+      - name: Remove transport-only files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf source-overlay
+          rm -f .github/workflows/materialize-source.yml
+          if find . -type f \( -iname '*.b64' -o -iname '*.base64' \) -not -path './.git/*' -print -quit | grep -q .; then
+            echo 'Unexpected Base64 transfer file remains:' >&2
+            find . -type f \( -iname '*.b64' -o -iname '*.base64' \) -not -path './.git/*' -print >&2
+            exit 1
+          fi
+      - name: Commit materialized tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'shim80'
+          git config user.email '22941009+shim80@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Nothing to materialize.'
+            exit 0
+          fi
+          git commit -m 'Materialize PSP source and remove Base64 transport files'
+          git push origin HEAD:main
