@@ -19,7 +19,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake git curl xz-utils xvfb imagemagick libgl1 libegl1 pulseaudio
 
-      - name: Verify host save and startup integration semantics
+      - name: Verify host save, startup and PSP control semantics
         run: |
           cmake -S test/startup-save-host -B .work/build/startup-save-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build .work/build/startup-save-host -j 4
@@ -29,6 +29,10 @@ jobs:
           cmake --build .work/build/startup-save-integration-host -j 4
           ./.work/build/startup-save-integration-host/startup_save_integration_host_test | tee .work/startup-save-integration-host.log
           grep -F 'STARTUP_SAVE_INTEGRATION_HOST_OK' .work/startup-save-integration-host.log
+          cmake -S test/psp-controls-host -B .work/build/psp-controls-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/psp-controls-host -j 4
+          ./.work/build/psp-controls-host/psp_controls_host_test | tee .work/psp-controls-host.log
+          grep -F 'PSP_CONTROLS_HOST_OK' .work/psp-controls-host.log
 
       - name: Bootstrap pinned PSP toolchain and PPSSPP
         run: ./scripts/bootstrap-repro.sh
@@ -84,6 +88,7 @@ jobs:
             .work/startup-save-eboot.sha256
             .work/startup-save-host.log
             .work/startup-save-integration-host.log
+            .work/psp-controls-host.log
             .work/dusklight-psp-save-select.png
             .work/ppsspp.log
             .work/xvfb.log
