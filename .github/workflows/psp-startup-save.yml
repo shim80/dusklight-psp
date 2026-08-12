@@ -42,6 +42,7 @@ jobs:
       - name: Run EBOOT in pinned PPSSPP and capture real emulator window
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
+          SDL_AUDIODRIVER: dummy
         run: |
           set -uxo pipefail
           PPSSPP="$GITHUB_WORKSPACE/.tools/ppsspp/PPSSPP-v1.20.4-anylinux-x86_64.AppImage"
