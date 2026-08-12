@@ -47,6 +47,33 @@ bool valid_leaf(const char* leaf) {
     return std::strstr(leaf, "..") == nullptr;
 }
 
+bool valid_relative_path(const char* path) {
+    if (path == nullptr || path[0] == '\0' || path[0] == '/') {
+        return false;
+    }
+
+    const char* segment = path;
+    for (const char* cursor = path;; ++cursor) {
+        const char value = *cursor;
+        if (value == '\\' || value == ':') {
+            return false;
+        }
+        if (value == '/' || value == '\0') {
+            const std::size_t length = static_cast<std::size_t>(cursor - segment);
+            if (length == 0 ||
+                (length == 1 && segment[0] == '.') ||
+                (length == 2 && segment[0] == '.' && segment[1] == '.')) {
+                return false;
+            }
+            if (value == '\0') {
+                break;
+            }
+            segment = cursor + 1;
+        }
+    }
+    return true;
+}
+
 int exit_callback(int, int, void*) {
     sceKernelExitGame();
     return 0;
@@ -132,6 +159,22 @@ bool make_game_path(const char* leaf, char* output, std::uint32_t capacity) {
         std::snprintf(output, capacity, "%s/%s", g_game_directory, leaf);
     if (length <= 0 || static_cast<std::uint32_t>(length) >= capacity) {
         set_error(-3, "game path exceeds output capacity");
+        return false;
+    }
+    return true;
+}
+
+bool make_game_relative_path(
+    const char* relative_path, char* output, std::uint32_t capacity) {
+    if (!g_initialized || !valid_relative_path(relative_path) ||
+        output == nullptr || capacity == 0) {
+        set_error(-10, "invalid game relative path request");
+        return false;
+    }
+    const int length =
+        std::snprintf(output, capacity, "%s/%s", g_game_directory, relative_path);
+    if (length <= 0 || static_cast<std::uint32_t>(length) >= capacity) {
+        set_error(-11, "game relative path exceeds output capacity");
         return false;
     }
     return true;
