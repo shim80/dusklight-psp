@@ -18,10 +18,24 @@ jobs:
       - name: Install host dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake git curl xz-utils
+          sudo apt-get install -y \
+            ninja-build cmake git curl xz-utils xvfb
 
       - name: Bootstrap pinned PSP toolchain and source tree
         run: ./scripts/bootstrap-repro.sh
+
+      - name: Run source chest lifecycle host regression
+        run: |
+          cmake \
+            -S "$GITHUB_WORKSPACE/.work/assembled/test/canonical-runtime" \
+            -B "$GITHUB_WORKSPACE/.work/build/canonical-runtime" \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build \
+            "$GITHUB_WORKSPACE/.work/build/canonical-runtime" \
+            --target original_tbox_host_test \
+            -j 4
+          "$GITHUB_WORKSPACE/.work/build/canonical-runtime/original_tbox_host_test"
 
       - name: Configure PSP chest checkpoint
         run: |
@@ -53,6 +67,51 @@ jobs:
 
       - name: Record EBOOT checksum
         run: sha256sum "$GITHUB_WORKSPACE/.work/build/chest-source-full/EBOOT.PBP"
+
+      - name: Boot PSP EBOOT in PPSSPP
+        run: |
+          ppsspp="$GITHUB_WORKSPACE/.tools/ppsspp/PPSSPP-v1.20.4-anylinux-x86_64.AppImage"
+          profile="$RUNNER_TEMP/ppsspp-profile"
+          config_home="$profile/.config"
+          cache_home="$profile/.cache"
+          game_dir="$config_home/ppsspp/PSP/GAME/DUSKLIGHT_CHEST_SOURCE_FULL"
+          marker="$game_dir/CHEST_SOURCE_FULL.FAIL"
+          stdout_log="$RUNNER_TEMP/ppsspp-chest.stdout.log"
+          stderr_log="$RUNNER_TEMP/ppsspp-chest.stderr.log"
+
+          test -f "$ppsspp"
+          chmod +x "$ppsspp"
+          mkdir -p "$game_dir" "$cache_home"
+          cp "$GITHUB_WORKSPACE/.work/build/chest-source-full/EBOOT.PBP" \
+            "$game_dir/EBOOT.PBP"
+          rm -f "$marker"
+
+          # Commercial-derived assets are intentionally absent in CI. Reaching
+          # fail(10) proves the Allegrex EBOOT booted, initialized the PSP
+          # platform and executed its asset-loading path without an import crash.
+          set +e
+          HOME="$profile" \
+          XDG_CONFIG_HOME="$config_home" \
+          XDG_CACHE_HOME="$cache_home" \
+          SDL_AUDIODRIVER=dummy \
+          LIBGL_ALWAYS_SOFTWARE=1 \
+          APPIMAGE_EXTRACT_AND_RUN=1 \
+            timeout 30s xvfb-run -a "$ppsspp" \
+              --graphics=software \
+              --windowed --escape-exit --pause-menu-exit \
+              "$game_dir/EBOOT.PBP" \
+              >"$stdout_log" 2>"$stderr_log"
+          ppsspp_status=$?
+          set -e
+
+          if ! test -f "$marker" || ! grep -Fxq 'code=10' "$marker"; then
+            echo "PPSSPP did not reach the expected missing-assets marker." >&2
+            echo "PPSSPP status: $ppsspp_status" >&2
+            cat "$stdout_log" >&2 || true
+            cat "$stderr_log" >&2 || true
+            exit 1
+          fi
+          echo "PPSSPP boot smoke passed with expected marker code=10."
 
       - name: Upload checkpoint EBOOT
         uses: actions/upload-artifact@v4
