@@ -22,7 +22,18 @@ jobs:
             ninja-build cmake git curl xz-utils xvfb
 
       - name: Bootstrap pinned PSP toolchain and source tree
-        run: ./scripts/bootstrap-repro.sh
+        run: |
+          for attempt in 1 2 3 4; do
+            if ./scripts/bootstrap-repro.sh; then
+              exit 0
+            fi
+            rm -f .cache/downloads/*.part
+            if [ "$attempt" -eq 4 ]; then
+              echo "Pinned PSP bootstrap failed after $attempt attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
 
       - name: Run source chest lifecycle host regression
         run: |
