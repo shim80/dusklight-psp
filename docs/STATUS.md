@@ -8,61 +8,60 @@ Gameplay completeness is the dominant priority. The target is end-to-end complet
 
 ## Historical parity foundation retained in this snapshot
 
-The repository contains the prior causal/render campaign reports through the V3 opaque/depth work, including camera/input/animation closures, render-state tracing, actor portability, room transition investigations, UI inventory, lighting audits and depth evidence.
-
-Important historical checkpoints reported during the campaign include:
-
-- `b572ab1` — camera source divergence pushed to tick 7;
-- `20d8fde` — camera layer closed;
-- `a62238d` — input layer closed;
-- `7629fbe`, `a4e18fd`, `5fffb95`, `5a986f2`, `a69b05b` — animation-source/DPAN/controller/closure sequence;
-- `ee2e730`, `a856982`, `741ca9d` — old-frame morph animation closure;
-- `5315bf1`, `3fff002` — controller double-state correction and causal evidence;
-- `9fbd1f1a3275c45454ba97e85e6c20ca40b0fe7c` — pre-ground pose / Hermite blocker report;
-- `1fe7c35` — PSP render-state trace gate;
-- `2c9621d`, `a4e4d40`, `7c0dce3`, `82bc775`, `9d59255`, `333753e`, `3543c8e` — V3 depth-state convergence and opaque-only profile sequence;
-- `e8c40f3`, `00dbefb`, `fbda917`, `290be7e` — alpha/UI/lighting/depth observability audits;
-- `7b8fff4` — synthetic PSP depth fixtures and UI inventory checkpoint.
-
-The original Git object database for all of those commits did not survive every workspace remount. Their reports and identifiers are preserved as historical provenance; do not rewrite them as if this reconstructed Git repository still had those objects.
+The repository preserves reports from the earlier camera/input/animation, actor, room-transition and rendering campaigns. Historical SHAs in those reports are provenance: some original Git objects did not survive workspace reconstruction and must not be presented as current reachable commits.
 
 ## Gameplay P1 advances
 
-The following gameplay behavior has been demonstrated during the P1 campaign and is the intended integration direction:
+Preserved gameplay work includes source-derived room handoff and locomotion, original `DOOR20` sequencing, source chest/TBOX flow, deferred Demo_Item acquisition semantics, GETA/GETAWAIT resources, Heart Piece source identity/placement and a PPSSPP GETAWAIT visibility proof.
 
-- source-derived room handoff architecture and clean Link locomotion handoff;
-- original `DOOR20` event sequencing and source door animations in PPSSPP;
-- source-derived Link `003n_dash` movement work;
-- original TBOX/chest lifecycle, source event ordering and persistence work;
-- deferred Demo_Item acquisition semantics: creation/show/message/dead/commit are distinct stages;
-- original GETA/GETAWAIT Link animation resources recovered from `AlAnm.arc`;
-- Heart Piece source model identity recovered as `o_gd_hutk.bmd`, resource ID 8, 484 triangles;
-- source-driven Heart Piece placement from Link joint 21 + item offset;
-- GETAWAIT Heart Piece visibility proven under PPSSPP in the preserved probe.
+The source-owned Demo_Item commit remains a draft merge candidate until the full asset-backed chest lifecycle is replayed after the `dead() -> normal execute -> execItemGet()` change.
 
-## Startup/save checkpoint
+## Startup/save/control checkpoint
 
-The release-path save layer is now represented by source-controlled PSP runtime code rather than only a standalone UI experiment.
+Branch `agent/startup-save-flow` now contains a public PSP route that exercises the same runtime boundaries required by the release path without committing commercial assets.
 
-Validated behavior on branch `agent/startup-save-flow`:
+Validated behavior:
 
-- three source-shaped file slots, initial selection 0, up/down clamped without wrap;
-- PSP Cross or START confirms the selected file;
-- a new file is created at `F_SP108`, room 1, start point 21, layer 0;
-- fixed `DPSV` v1 persistence with CRC32 and exact slot metadata restoration;
-- an occupied slot resumes its persisted `stage/room/start/layer` context;
-- `StartupSaveFlow` binds `StartupRuntime` file-selection and new-game-transition segments to persistence and exposes gameplay handoff only after the transition boundary;
-- a new game is persisted immediately before gameplay handoff;
-- write/read failures fail closed instead of silently replacing or ignoring save data;
-- host integration destroys/recreates the flow and verifies continuation from the persisted gameplay checkpoint.
+- three file slots; initial selection 0; up/down clamp without wrap;
+- Cross or START confirms a file;
+- new game context is `F_SP108`, room 1, start point 21, layer 0;
+- `DPSV` v1 persistence uses CRC32 and restores exact slot metadata;
+- occupied files resume their persisted `stage/room/start/layer` context;
+- `StartupSaveFlow` binds `StartupRuntime` file selection and `NewGameTransition` to persistence;
+- new files are written before gameplay handoff;
+- read/write failures fail closed;
+- destruction/recreation resumes the persisted gameplay checkpoint;
+- PSP gameplay controls are mapped through a host-testable mapper: analog stick movement with deadzone, Cross action, L/R camera, Triangle/Square zoom, START pause, Circle cancel, D-pad menu navigation and SELECT debug;
+- one-shot actions are edge-triggered so held buttons cannot double-fire.
 
-GitHub Actions run `31630808657` on commit `a0fb49ab3f3e8587385160a95f5ef3b02e8a19db` passed the save host test, startup/save integration test, pinned PSPDEV cross-build and a real PPSSPP 1.20.4 boot/capture. The generated development EBOOT SHA-256 was `d12c2edfafcfb09dde1651c9459df131f42524439af2a19b00d0da26ba8afb51`.
+The PSP probe now consumes `StartupSaveFlow` directly and reads real `SceCtrlData` through the PSP control mapper instead of calling `FileSelectRuntime` directly. Its public DPST fixture drives the non-commercial startup state machine to file selection, then selection/confirmation reaches `NewGameTransition` and exposes the selected gameplay handoff context.
 
-This is logical/runtime proof for the save boundary plus a real PSP executable boot. It is not yet proof of the complete asset-backed canonical intro/title/file-select/F_SP108 route in one PPSSPP run.
+GitHub Actions run `31631766479` on commit `5d3cbfe5a928e572a72fda0d0559ca4ab69baabd` passed:
+
+- save host semantics;
+- startup/save integration semantics;
+- PSP control semantics;
+- pinned PSPDEV Allegrex cross-build including `startup_save_flow.cpp` and `psp_controls.cpp`;
+- real PPSSPP 1.20.4 boot of the generated EBOOT;
+- framebuffer capture and artifact publication.
+
+Development EBOOT SHA-256: `264a15635c56017b794eeea990ad00715b4db88b863f9a23f3775bff4efdeed0`.
+
+Host markers:
+
+- `STARTUP_SAVE_FLOW_HOST_OK`
+- `STARTUP_SAVE_INTEGRATION_HOST_OK flow=intro-title-file-select-transition-gameplay new_game=F_SP108/R01/start21 immediate_persist=true continue_context=true gameplay_checkpoint=true`
+- `PSP_CONTROLS_HOST_OK analog=deadzone+normalized move=stick action=cross camera=L/R zoom=triangle/square pause=start cancel=circle menu=dpad debug=select edges=debounced`
+
+This is real PSP/PPSSPP executable proof of the public startup/save/control boundary. It is **not** proof of the complete original asset-backed intro/title/file-select/F_SP108 route.
 
 ## Current preserved proof
 
-`test/getawait-heart-probe/` preserves the latest asset-backed item-presentation proof. `test/startup-save-host/`, `test/startup-save-integration-host/` and `test/startup-save-psp/` preserve the public save-flow logic, recreation/persistence and PSP boot proofs.
+- `test/startup-save-host/` — persistent slot semantics;
+- `test/startup-save-integration-host/` — startup -> save -> transition -> gameplay handoff and recreation;
+- `test/psp-controls-host/` — PSP control mapping and edge semantics;
+- `test/startup-save-psp/` — PSP executable using `StartupSaveFlow` and the control mapper;
+- `test/getawait-heart-probe/` — latest asset-backed item-presentation proof.
 
 Commercial game data is intentionally not versioned.
 
@@ -70,21 +69,18 @@ Commercial game data is intentionally not versioned.
 
 Close the first public-release path in the canonical EBOOT:
 
-`intro/opening -> title -> file select -> create/load persistent slot -> new-game transition -> F_SP108 first playable -> PSP controls`
+`intro/opening -> title -> file select -> create/load persistent slot -> NewGameTransition -> F_SP108 first playable -> PSP controls`
 
-The save boundary itself is now implemented and publicly tested. The next required proof is to wire it into the canonical asset-backed startup executable and replay the route in PPSSPP with the real startup packages, then continue through the first playable controls.
+The public save/control boundary is now implemented and PPSSPP-booted. The next required proof is the canonical asset-backed executable using the same `StartupSaveFlow` handoff and PSP mapper with real startup packages and the first playable runtime.
 
-In parallel, the source-driven chest lifecycle remains a gameplay checkpoint and must not be merged as fully validated until its asset-backed lifecycle is replayed after the source-owned Demo_Item commit change.
+A reconstructability issue remains: `scripts/build-canonical-existing-assets.sh` references the historical `test/dusklight-psp` target, which is absent from the current public overlay. Do not invent that executable from memory; recover its implementation/provenance or rebuild the canonical entry point from preserved source/runtime contracts with explicit validation.
 
 ## Explicitly not closed
 
-- complete asset-backed canonical intro/title/save/F_SP108 run with the new persistence layer;
-- first-playable PSP control acceptance for the release milestone;
+- complete asset-backed canonical intro/title/save/F_SP108 one-EBOOT run;
+- first-playable control acceptance in the actual F_SP108 gameplay runtime;
 - full inventory/pause UI fidelity;
-- all chest sizes/items;
-- complete item message UI and message database integration;
-- all source item visual animation channels (BCK/BRK/TEV) on PSP;
-- broad NPC/enemy/boss coverage;
-- all dungeon/map systems;
-- full cinematic coverage;
+- all chest sizes/items and full item message integration;
+- source item BCK/BRK/TEV visual fidelity;
+- broad NPC/enemy/boss, dungeon/map and cinematic coverage;
 - advanced lighting/post-processing parity.
