@@ -17,7 +17,7 @@ jobs:
       - name: Install host dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake git curl xz-utils xvfb imagemagick xdotool libgl1 libegl1
+          sudo apt-get install -y ninja-build cmake git curl xz-utils xvfb imagemagick xdotool libgl1 libegl1 pulseaudio
 
       - name: Verify host save-flow semantics
         run: |
@@ -42,15 +42,16 @@ jobs:
       - name: Run EBOOT in pinned PPSSPP and capture real emulator window
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
-          SDL_AUDIODRIVER: dummy
-          SDL_AUDIO_DRIVER: dummy
         run: |
           set -uxo pipefail
           PPSSPP="$GITHUB_WORKSPACE/.tools/ppsspp/PPSSPP-v1.20.4-anylinux-x86_64.AppImage"
-          mkdir -p .work/ppsspp-app
+          mkdir -p .work/ppsspp-app .work/pulse
           cd .work/ppsspp-app
           "$PPSSPP" --appimage-extract >/dev/null || exit 1
           cd "$GITHUB_WORKSPACE"
+          pulseaudio --start --exit-idle-time=-1 --log-target=file:"$GITHUB_WORKSPACE/.work/pulseaudio.log" || true
+          sleep 2
+          pactl info >.work/pactl-info.log 2>&1 || { cat .work/pulseaudio.log || true; cat .work/pactl-info.log || true; exit 1; }
           Xvfb :99 -screen 0 1280x720x24 >.work/xvfb.log 2>&1 &
           XVFB_PID=$!
           export DISPLAY=:99
@@ -74,6 +75,7 @@ jobs:
           kill "$PPSSPP_PID" 2>/dev/null || true
           pkill -f 'PPSSPP|ppsspp' 2>/dev/null || true
           kill "$XVFB_PID" 2>/dev/null || true
+          pulseaudio --kill 2>/dev/null || true
 
       - name: Upload PSP EBOOT and PPSSPP evidence
         if: always()
@@ -89,3 +91,5 @@ jobs:
             .work/ppsspp-no-window.png
             .work/ppsspp.log
             .work/xvfb.log
+            .work/pulseaudio.log
+            .work/pactl-info.log
