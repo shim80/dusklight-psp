@@ -137,6 +137,14 @@ bool SaveBank::update_slot(
     return true;
 }
 
+bool SaveBank::restore_slot(std::size_t index, const Slot& slot) {
+    if (index >= kSlotCount || !slot.occupied || slot.save_counter == 0) {
+        return false;
+    }
+    slots_[index] = slot;
+    return true;
+}
+
 bool SaveBank::load_start(std::size_t index, StartContext* output) const {
     if (index >= kSlotCount || output == nullptr || !slots_[index].occupied) {
         return false;
@@ -256,21 +264,17 @@ BankError decode_bank(
         if ((record[0] & 1u) == 0) {
             continue;
         }
-        StartContext start = {};
-        start.room = static_cast<std::int8_t>(record[1]);
-        start.start_point = record[2];
-        start.layer = record[3];
-        std::memcpy(start.stage.data(), record + 12, kStageNameBytes);
-        start.stage[kStageNameBytes - 1] = '\0';
-        if (!decoded.create_new_game(index, start)) {
+        Slot slot = {};
+        slot.occupied = true;
+        slot.start.room = static_cast<std::int8_t>(record[1]);
+        slot.start.start_point = record[2];
+        slot.start.layer = record[3];
+        std::memcpy(slot.start.stage.data(), record + 12, kStageNameBytes);
+        slot.start.stage[kStageNameBytes - 1] = '\0';
+        slot.play_seconds = read_u32(record + 4);
+        slot.save_counter = read_u32(record + 8);
+        if (!decoded.restore_slot(index, slot)) {
             return BankError::BadSize;
-        }
-        const std::uint32_t play_seconds = read_u32(record + 4);
-        const std::uint32_t save_counter = read_u32(record + 8);
-        if (play_seconds != 0 || save_counter > 1) {
-            if (!decoded.update_slot(index, start, play_seconds)) {
-                return BankError::BadSize;
-            }
         }
     }
     decoded.select_slot(bytes[kSelectedSlotOffset]);
