@@ -27,15 +27,15 @@ jobs:
       - name: Run source chest lifecycle host regression
         run: |
           cmake \
-            -S "$GITHUB_WORKSPACE/.work/assembled/test/canonical-runtime" \
-            -B "$GITHUB_WORKSPACE/.work/build/canonical-runtime" \
+            -S "$GITHUB_WORKSPACE/.work/assembled/test/canonical-runtime-demo-item" \
+            -B "$GITHUB_WORKSPACE/.work/build/canonical-runtime-demo-item" \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build \
-            "$GITHUB_WORKSPACE/.work/build/canonical-runtime" \
+            "$GITHUB_WORKSPACE/.work/build/canonical-runtime-demo-item" \
             --target original_tbox_host_test \
             -j 4
-          "$GITHUB_WORKSPACE/.work/build/canonical-runtime/original_tbox_host_test"
+          "$GITHUB_WORKSPACE/.work/build/canonical-runtime-demo-item/canonical-runtime/original_tbox_host_test"
 
       - name: Configure PSP chest checkpoint
         run: |
