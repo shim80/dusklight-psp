@@ -1,22 +1,69 @@
-# dusklight-psp
+# Dusklight PSP
 
-Gameplay-first PSP port of **Dusklight / Twilight Princess decompilation work**, maintained as a source-faithful compatibility effort for Sony PSP.
+A gameplay-first Sony PSP port of **Dusklight / Twilight Princess decompilation work**.
 
-The priority is a finishable game with source-matching gameplay: player procedures, room transitions, doors, chests, item-get, inventory, UI, NPCs, enemies, bosses, maps, dungeons, scripted events and cinematics. Rendering stays conservative until gameplay parity is substantially complete.
+The goal is simple: make the game playable from beginning to end on PSP while keeping gameplay, event flow and source behavior as close as practical to the pinned Dusklight source. Visual fidelity is deliberately secondary for now; conservative/unlit rendering is preferred over delaying gameplay progress.
 
-## Current checkpoint
+> **Status:** active development. No public gameplay release is considered ready yet.
 
-The preserved P1 checkpoint proves under PPSSPP that the original GETAWAIT Link animation (`0x16A`) can present the Heart Piece in the real `D_MN10/R02` gameplay context using source animation data, source model identity, source-derived large-chest placement, Demo_Item placement from Link joint 21 and source item-get camera geometry.
+## What is being ported first
 
-The next integration step is the complete source-driven chest lifecycle:
+The current priority is complete game flow rather than rendering polish:
 
-`interaction -> DEFAULT_TREASURE_NORMAL -> BOXOP -> GETA -> Demo_Item show -> GETAWAIT -> message -> dead() -> execItemGet() -> inventory/treasure bit -> persistence -> locomotion`.
+- intro and scripted events;
+- main menu and PSP-friendly controls;
+- save creation/loading;
+- player movement and room transitions;
+- doors, chests and item-get sequences;
+- inventory and pause/UI systems;
+- NPCs, enemies and bosses;
+- maps, dungeons and cinematics;
+- persistence across room recreation and saves.
 
-Read `AGENTS.md`, `docs/STATUS.md`, `docs/RESUME.md` and `docs/EXTERNAL_HANDOFF.md` before changing code.
+Advanced lighting, post-processing and exact material presentation remain intentionally deferred until gameplay is substantially complete.
 
-## Reproduce the validated development environment
+## Current gameplay checkpoint
 
-The PSP-specific compatibility source, tests, scripts and recovered reports are **directly versioned in this repository**. The old publication-time `source-overlay/` transport is no longer part of `main` and is not required.
+The preserved PSP/PPSSPP work has already demonstrated the original GETAWAIT Link animation (`0x16A`) presenting the Heart Piece in the real `D_MN10/R02` gameplay context with source-derived placement and item-get camera geometry.
+
+The active integration checkpoint is the complete source-driven chest lifecycle:
+
+```text
+interaction
+  -> DEFAULT_TREASURE_NORMAL
+  -> BOXOP
+  -> GETA
+  -> Demo_Item show
+  -> GETAWAIT
+  -> item message
+  -> Demo_Item dead
+  -> source-owned execItemGet()
+  -> inventory / treasure bit
+  -> persistence
+  -> locomotion
+```
+
+The current branch also cross-compiles this checkpoint to a real PSP `EBOOT.PBP` in GitHub Actions. CI artifacts are development checkpoints only; they are **not** public releases and may still require local game-derived assets to run correctly.
+
+## Screenshots
+
+Real PSP/PPSSPP screenshots will be shown here once they are captured from validated gameplay checkpoints.
+
+No screenshots are currently committed to the repository, and this project intentionally does not use fabricated or desktop-only images as PSP evidence.
+
+When the next asset-backed PPSSPP validation is complete, this section will be updated with actual PSP captures from the intro/menu/gameplay path.
+
+## Releases
+
+A public EBOOT release will be created only after the first playable milestone is ready:
+
+**intro cinematic + main menu + save management + beginning of the game + PSP-adapted controls**.
+
+Until then, development EBOOTs may appear as temporary GitHub Actions artifacts for testing, but they should not be treated as stable releases.
+
+## Reproducing the development environment
+
+The PSP compatibility code, tests, scripts and recovered reports are versioned in this repository. Commercial Nintendo data is intentionally excluded.
 
 For the exact validated Linux x86_64 environment:
 
@@ -25,24 +72,24 @@ For the exact validated Linux x86_64 environment:
 ./scripts/bootstrap-repro.sh
 ```
 
-`bootstrap-repro.sh` downloads the pinned PSPDEV/PSPSDK and PPSSPP releases, verifies their SHA-256 values, and assembles the pinned upstream Dusklight/Aurora/Nod source with this repository's PSP tree under `.work/assembled/`.
+`bootstrap-repro.sh` downloads and verifies the pinned PSPDEV/PSPSDK and PPSSPP versions, then assembles the pinned upstream Dusklight/Aurora/Nod source tree with the PSP compatibility layer under `.work/assembled/`.
 
-For the older cross-platform tool bootstrap, `scripts/bootstrap-tools.sh` / `scripts/bootstrap-tools.ps1` use `toolchain/manifest.lock`. Those paths are useful for development, but the exact validated campaign baseline is Linux x86_64 as documented in `toolchain/REPRODUCIBLE_ENVIRONMENT.md`.
+A contributor must provide a legally obtained supported game image locally whenever original game assets need to be regenerated.
 
-Commercial Nintendo data is intentionally excluded. A contributor must supply a legally obtained supported game image locally when original assets need regeneration.
+## Repository map
 
-## Repository guide
-
-- `AGENTS.md` — mandatory project/agent rules and priority order.
-- `docs/STATUS.md` — authoritative checkpoint and open work.
-- `docs/RESUME.md` — exact restart protocol for a fresh session/agent.
-- `docs/EXTERNAL_HANDOFF.md` — clean-room handoff instructions and known boundaries.
+- `AGENTS.md` — project rules and gameplay-first priority order.
+- `docs/STATUS.md` — authoritative current checkpoint and open work.
+- `docs/RESUME.md` — exact restart protocol for a fresh development session.
 - `docs/ROADMAP.md` — gameplay-first phase ordering.
-- `docs/COMMIT_LEDGER.md` — historical/reconstructed provenance.
+- `docs/EXTERNAL_HANDOFF.md` — clean-room handoff and known boundaries.
 - `docs/REPRODUCIBILITY.md` — source, toolchain and asset policy.
-- `docs/reports/` — recovered causal campaign reports and P1 evidence.
-- `test/getawait-heart-probe/` — latest preserved visible GETAWAIT Heart Piece proof harness.
-- `test/chest-source-full/` — full chest-event integration harness under active development.
-- `CONTRIBUTING.md` — contribution and evidence discipline.
+- `docs/COMMIT_LEDGER.md` — historical/reconstructed provenance.
+- `docs/reports/` — recovered causal campaign reports and PSP evidence notes.
+- `test/getawait-heart-probe/` — preserved GETAWAIT Heart Piece visibility proof.
+- `test/chest-source-full/` — full source-driven chest-event integration harness.
+- `CONTRIBUTING.md` — contribution and evidence requirements.
 
-Never fabricate traces, screenshots, metrics, assets or unsupported source behavior.
+## Development rule
+
+Never fabricate traces, screenshots, metrics, assets or unsupported source behavior. A gameplay checkpoint is only considered validated once its evidence actually exists.
