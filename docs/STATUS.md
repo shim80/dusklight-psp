@@ -48,20 +48,37 @@ It searches the R02 source-derived actor table for the Heart Piece chest, derive
 
 Preserved proof artifacts are documented in the publication overlay and evidence manifest. Commercial game data is intentionally not versioned.
 
+## PSP link and source-owned commit checkpoint
+
+The stacked gameplay branch now has an asset-independent host regression for the source-owned `Demo_Item` commit boundary. It verifies that inventory remains unchanged before `dead()`, commits once on the following normal source process frame, and remains exactly one on a second frame.
+
+The PSP chest target's final link order is also corrected: every Dusklight archive is enclosed in one linker rescan group, followed by the PSPSDK/GU import libraries. GitHub Actions fails if `psp-fixup-imports` ever emits the former `stubs out of order` warning.
+
+Validated in GitHub Actions run `31633775215`:
+
+- host marker: `DEMO_ITEM_COMMIT_HOST_OK`;
+- Allegrex `EBOOT.PBP` built without the import-order warning;
+- EBOOT SHA-256: `ca162d1d48f8b595bd15d4b845ff2c97e6524759b14ac90e9d779826a9e45a18`;
+- PPSSPP reached the controlled missing-assets boundary `CHEST_SOURCE_FULL.FAIL` with `code=10`.
+
+That PPSSPP marker proves boot and import resolution in public CI. It does not replace the asset-backed gameplay run required to close the complete chest lifecycle. See `docs/reports/201-psp-import-stub-order.md`.
+
 ## Active task
 
-Integrate the validated GETA/GETAWAIT and Demo_Item presentation into the complete original chest event lifecycle. Do not spend the next cycle on lighting or post-processing.
+Integrate and validate the complete original chest event lifecycle with the source-owned `Demo_Item` commit path. Do not spend the next gameplay cycle on broad lighting or post-processing.
 
 Desired closure sequence:
 
 `OPEN interaction -> DEFAULT_TREASURE_NORMAL -> BOXOP -> GETA -> Demo_Item show -> GETAWAIT -> item message -> Demo_Item dead -> execItemGet -> inventory -> treasure bit -> event cleanup -> locomotion -> room recreation persistence`
 
+After that gameplay checkpoint is integrated, the separate visual issue remains the source BCK/BRK/TEV presentation for `O_gD_hutk`.
+
 ## Explicitly not closed
 
+- asset-backed full chest lifecycle validation for the current source-owned commit branch;
+- source Heart Piece BCK/BRK/TEV presentation on PSP;
 - full inventory/pause UI fidelity;
 - all chest sizes/items;
-- complete item message UI and message database integration;
-- all source item visual animation channels (BCK/BRK/TEV) on PSP;
 - broad NPC/enemy/boss coverage;
 - all dungeon/map systems;
 - full cinematic coverage;
