@@ -25,6 +25,8 @@ std::uint64_t monotonic_microseconds();
 void sleep_microseconds(std::uint32_t duration);
 
 bool make_game_path(const char* leaf, char* output, std::uint32_t capacity);
+bool make_game_relative_path(
+    const char* relative_path, char* output, std::uint32_t capacity);
 bool write_file(const char* path, const void* data, std::uint32_t size);
 bool read_file(const char* path, void* data, std::uint32_t capacity,
                std::uint32_t* size_read);
