@@ -105,6 +105,7 @@ jobs:
           XDG_CONFIG_HOME="$config_home" \
           XDG_CACHE_HOME="$cache_home" \
           SDL_AUDIODRIVER=dummy \
+          SDL_AUDIO_DRIVER=dummy \
           LIBGL_ALWAYS_SOFTWARE=1 \
           APPIMAGE_EXTRACT_AND_RUN=1 \
             timeout 30s xvfb-run -a "$ppsspp" \
