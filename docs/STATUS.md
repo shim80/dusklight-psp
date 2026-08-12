@@ -40,24 +40,46 @@ The following gameplay behavior has been demonstrated during the P1 campaign and
 - source-driven Heart Piece placement from Link joint 21 + item offset;
 - GETAWAIT Heart Piece visibility proven under PPSSPP in the preserved probe.
 
+## Startup/save checkpoint
+
+The release-path save layer is now represented by source-controlled PSP runtime code rather than only a standalone UI experiment.
+
+Validated behavior on branch `agent/startup-save-flow`:
+
+- three source-shaped file slots, initial selection 0, up/down clamped without wrap;
+- PSP Cross or START confirms the selected file;
+- a new file is created at `F_SP108`, room 1, start point 21, layer 0;
+- fixed `DPSV` v1 persistence with CRC32 and exact slot metadata restoration;
+- an occupied slot resumes its persisted `stage/room/start/layer` context;
+- `StartupSaveFlow` binds `StartupRuntime` file-selection and new-game-transition segments to persistence and exposes gameplay handoff only after the transition boundary;
+- a new game is persisted immediately before gameplay handoff;
+- write/read failures fail closed instead of silently replacing or ignoring save data;
+- host integration destroys/recreates the flow and verifies continuation from the persisted gameplay checkpoint.
+
+GitHub Actions run `31630808657` on commit `a0fb49ab3f3e8587385160a95f5ef3b02e8a19db` passed the save host test, startup/save integration test, pinned PSPDEV cross-build and a real PPSSPP 1.20.4 boot/capture. The generated development EBOOT SHA-256 was `d12c2edfafcfb09dde1651c9459df131f42524439af2a19b00d0da26ba8afb51`.
+
+This is logical/runtime proof for the save boundary plus a real PSP executable boot. It is not yet proof of the complete asset-backed canonical intro/title/file-select/F_SP108 route in one PPSSPP run.
+
 ## Current preserved proof
 
-`test/getawait-heart-probe/` is the latest source-preserved PSP harness in this checkpoint.
+`test/getawait-heart-probe/` preserves the latest asset-backed item-presentation proof. `test/startup-save-host/`, `test/startup-save-integration-host/` and `test/startup-save-psp/` preserve the public save-flow logic, recreation/persistence and PSP boot proofs.
 
-It searches the R02 source-derived actor table for the Heart Piece chest, derives Link's large-chest placement and GETAWAIT yaw, applies source animation resource `0x16A`, derives Demo_Item position from Link joint 21, and scans source-correct item-get camera side/frame combinations for visible framebuffer evidence.
-
-Preserved proof artifacts are documented in the publication overlay and evidence manifest. Commercial game data is intentionally not versioned.
+Commercial game data is intentionally not versioned.
 
 ## Active task
 
-Integrate the validated GETA/GETAWAIT and Demo_Item presentation into the complete original chest event lifecycle. Do not spend the next cycle on lighting or post-processing.
+Close the first public-release path in the canonical EBOOT:
 
-Desired closure sequence:
+`intro/opening -> title -> file select -> create/load persistent slot -> new-game transition -> F_SP108 first playable -> PSP controls`
 
-`OPEN interaction -> DEFAULT_TREASURE_NORMAL -> BOXOP -> GETA -> Demo_Item show -> GETAWAIT -> item message -> Demo_Item dead -> execItemGet -> inventory -> treasure bit -> event cleanup -> locomotion -> room recreation persistence`
+The save boundary itself is now implemented and publicly tested. The next required proof is to wire it into the canonical asset-backed startup executable and replay the route in PPSSPP with the real startup packages, then continue through the first playable controls.
+
+In parallel, the source-driven chest lifecycle remains a gameplay checkpoint and must not be merged as fully validated until its asset-backed lifecycle is replayed after the source-owned Demo_Item commit change.
 
 ## Explicitly not closed
 
+- complete asset-backed canonical intro/title/save/F_SP108 run with the new persistence layer;
+- first-playable PSP control acceptance for the release milestone;
 - full inventory/pause UI fidelity;
 - all chest sizes/items;
 - complete item message UI and message database integration;
