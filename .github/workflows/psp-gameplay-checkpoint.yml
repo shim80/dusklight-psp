@@ -43,3 +43,11 @@ jobs:
 
       - name: Record EBOOT checksum
         run: sha256sum "$GITHUB_WORKSPACE/.work/build/chest-source-full/EBOOT.PBP"
+
+      - name: Upload checkpoint EBOOT
+        uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-psp-chest-source-full-eboot
+          path: .work/build/chest-source-full/EBOOT.PBP
+          if-no-files-found: error
+          retention-days: 14
