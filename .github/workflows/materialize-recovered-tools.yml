@@ -1,0 +1,50 @@
+name: Materialize recovered tooling
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/materialize-recovered-tools.yml
+      - .transfer/tools/**
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reconstruct and verify tooling archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          find .transfer/tools -type f -name 'part*' -print0 | LC_ALL=C sort -z | xargs -0 cat | base64 -d > /tmp/recovered-tools.tar.xz
+          echo '283653927d6412da2dc190b75b288faf05c575b3288a04b20f01ed90301db75e  /tmp/recovered-tools.tar.xz' | sha256sum -c -
+          xz -t /tmp/recovered-tools.tar.xz
+          test "$(tar -tJf /tmp/recovered-tools.tar.xz | wc -l)" -eq 186
+          tar -xJf /tmp/recovered-tools.tar.xz -C .
+      - name: Clean transport and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .transfer
+          rm -f .github/workflows/materialize-recovered-tools.yml
+          if find . -type f \( -iname '*.b64' -o -iname '*.base64' \) -not -path './.git/*' -print -quit | grep -q .; then
+            echo 'Unexpected Base64 transport file remains in HEAD' >&2
+            find . -type f \( -iname '*.b64' -o -iname '*.base64' \) -not -path './.git/*' -print >&2
+            exit 1
+          fi
+          git config user.name 'shim80'
+          git config user.email '22941009+shim80@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No tooling changes were materialized.' >&2
+            exit 1
+          fi
+          git commit -m 'Archive recovered tooling and reproducibility scripts'
+          git push origin HEAD:main
