@@ -1,0 +1,45 @@
+name: PSP gameplay checkpoint
+
+on:
+  push:
+    branches:
+      - agent/source-demo-item-commit
+  workflow_dispatch:
+
+jobs:
+  build-chest-source-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl xz-utils
+
+      - name: Bootstrap pinned PSP toolchain and source tree
+        run: ./scripts/bootstrap-repro.sh
+
+      - name: Configure PSP chest checkpoint
+        run: |
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake \
+            -S "$GITHUB_WORKSPACE/.work/assembled/test/chest-source-full" \
+            -B "$GITHUB_WORKSPACE/.work/build/chest-source-full" \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build PSP EBOOT
+        run: |
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          cmake --build "$GITHUB_WORKSPACE/.work/build/chest-source-full" -j 4
+          test -f "$GITHUB_WORKSPACE/.work/build/chest-source-full/EBOOT.PBP"
+
+      - name: Record EBOOT checksum
+        run: sha256sum "$GITHUB_WORKSPACE/.work/build/chest-source-full/EBOOT.PBP"
