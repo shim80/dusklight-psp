@@ -1,0 +1,45 @@
+name: Materialize historical source tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/materialize-source-tests-history.yml
+      - .transfer/source-tests/**
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reconstruct and verify archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          find .transfer/source-tests -type f -name 'part*' -print0 | sort -z | xargs -0 cat | base64 -d > /tmp/source-tests.tar.xz
+          echo 'd9d4558d366852ec46bb692defc5c132f168b2e774a9c82daeb5fe1ea267fcda  /tmp/source-tests.tar.xz' | sha256sum -c -
+          xz -t /tmp/source-tests.tar.xz
+          test "$(tar -tJf /tmp/source-tests.tar.xz | wc -l)" -eq 31
+          tar -xJf /tmp/source-tests.tar.xz -C .
+      - name: Clean transport and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .transfer
+          rm -f .github/workflows/materialize-source-tests-history.yml
+          if find . -type f \( -iname '*.b64' -o -iname '*.base64' \) -not -path './.git/*' -print -quit | grep -q .; then
+            echo 'Unexpected Base64 file remains' >&2
+            exit 1
+          fi
+          git config user.name 'shim80'
+          git config user.email '22941009+shim80@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Archive recovered source and test checkpoints'
+          git push origin HEAD:main
