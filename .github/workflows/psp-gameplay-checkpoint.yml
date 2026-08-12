@@ -35,7 +35,7 @@ jobs:
             sleep $((attempt * 5))
           done
 
-      - name: Run source chest lifecycle host regression
+      - name: Run source-owned Demo_Item host regression
         run: |
           cmake \
             -S "$GITHUB_WORKSPACE/.work/assembled/test/canonical-runtime-demo-item" \
@@ -44,9 +44,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build \
             "$GITHUB_WORKSPACE/.work/build/canonical-runtime-demo-item" \
-            --target original_tbox_host_test \
+            --target demo_item_commit_host_test \
             -j 4
-          "$GITHUB_WORKSPACE/.work/build/canonical-runtime-demo-item/canonical-runtime/original_tbox_host_test"
+          "$GITHUB_WORKSPACE/.work/build/canonical-runtime-demo-item/demo_item_commit_host_test"
 
       - name: Configure PSP chest checkpoint
         run: |
