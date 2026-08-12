@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.25)
 
 project(dusklight_psp_demo_item_host_regression LANGUAGES CXX)
 
+set(DUSKLIGHT_SOURCE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../dusklight-main")
+set(DUSK_PSP_ROOT "${DUSKLIGHT_SOURCE_ROOT}/platforms/psp")
+
 # Reuse the canonical host graph, then complete the source list required by the
 # stacked Demo_Item lifecycle work. The base branch's original_tbox_host_test
 # references Demo_Item symbols but does not compile their source/PSP bridge.
