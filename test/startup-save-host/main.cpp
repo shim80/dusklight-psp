@@ -33,7 +33,8 @@ int main() {
     assert(bank.slot(1).save_counter == 1);
 
     StartContext dungeon = {};
-    std::strncpy(dungeon.stage.data(), "D_MN05A", dungeon.stage.size() - 1);
+    constexpr char kDungeonStage[] = "D_MN05A";
+    std::memcpy(dungeon.stage.data(), kDungeonStage, sizeof(kDungeonStage));
     dungeon.room = 50;
     dungeon.start_point = 3;
     dungeon.layer = 0;
