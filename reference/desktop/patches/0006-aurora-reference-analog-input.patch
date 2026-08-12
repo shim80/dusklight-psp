@@ -1,0 +1,98 @@
+diff --git a/lib/dolphin/pad/pad.cpp b/lib/dolphin/pad/pad.cpp
+index 2f0486e..862ed1a 100644
+--- a/lib/dolphin/pad/pad.cpp
++++ b/lib/dolphin/pad/pad.cpp
+@@ -299,6 +299,51 @@ std::array<bool, PAD_CHANMAX> g_suppressRightTrigger{};
+
+ #ifdef DUSKLIGHT_REFERENCE_TRACE
+ uint64_t g_referencePadRead = 0;
++
++struct ReferenceAnalog {
++  s8 x;
++  s8 y;
++  bool active;
++};
++
++ReferenceAnalog reference_analog_for_read(const uint64_t read) {
++  const char* cursor = std::getenv("DUSKLIGHT_REFERENCE_ANALOG");
++  if (cursor == nullptr) {
++    return {};
++  }
++
++  while (*cursor != '\0') {
++    char* startEnd = nullptr;
++    const unsigned long long start = std::strtoull(cursor, &startEnd, 10);
++    if (startEnd == cursor || *startEnd != '-') {
++      return {};
++    }
++    char* endEnd = nullptr;
++    const unsigned long long end =
++        std::strtoull(startEnd + 1, &endEnd, 10);
++    if (endEnd == startEnd + 1 || *endEnd != ':') {
++      return {};
++    }
++    char* xEnd = nullptr;
++    const long x = std::strtol(endEnd + 1, &xEnd, 10);
++    if (xEnd == endEnd + 1 || *xEnd != ':') {
++      return {};
++    }
++    char* yEnd = nullptr;
++    const long y = std::strtol(xEnd + 1, &yEnd, 10);
++    if (yEnd == xEnd + 1 ||
++        (*yEnd != '\0' && *yEnd != ',') ||
++        start > end || x < -127 || x > 127 || y < -127 || y > 127) {
++      return {};
++    }
++    if (read >= start && read <= end) {
++      return {
++          static_cast<s8>(x), static_cast<s8>(y), true};
++    }
++    cursor = *yEnd == ',' ? yEnd + 1 : yEnd;
++  }
++  return {};
++}
+
+ PADButton reference_button_for_read(const uint64_t read, const char** name) {
+   const char* cursor = std::getenv("DUSKLIGHT_REFERENCE_INPUT");
+@@ -747,6 +792,8 @@ u32 PADRead(PADStatus* status) {
+   const char* referenceButtonName = nullptr;
+   const PADButton referenceButton =
+       reference_button_for_read(g_referencePadRead, &referenceButtonName);
++  const ReferenceAnalog referenceAnalog =
++      reference_analog_for_read(g_referencePadRead);
+   if (g_referencePadRead % 300 == 0) {
+     aurora::input::Log.info(
+         "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
+@@ -765,7 +812,8 @@ u32 PADRead(PADStatus* status) {
+     auto controller = aurora::input::get_controller_for_player(i);
+     if (controller == nullptr && !g_keyboardBindings[i].m_mappingsSet && !g_virtualPadActive[i]
+ #ifdef DUSKLIGHT_REFERENCE_TRACE
+-        && !(i == PAD_CHAN0 && referenceButton != 0)
++        && !(i == PAD_CHAN0 &&
++             (referenceButton != 0 || referenceAnalog.active))
+ #endif
+     ) {
+       status[i].err = PAD_ERR_NO_CONTROLLER;
+@@ -977,6 +1025,22 @@ u32 PADRead(PADStatus* status) {
+     }
+
+ #ifdef DUSKLIGHT_REFERENCE_TRACE
++    if (i == PAD_CHAN0 && referenceAnalog.active) {
++      status[i].stickX = referenceAnalog.x;
++      status[i].stickY = referenceAnalog.y;
++      static s8 referenceLastX;
++      static s8 referenceLastY;
++      if (referenceLastX != referenceAnalog.x ||
++          referenceLastY != referenceAnalog.y) {
++        aurora::input::Log.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v3\","
++            "\"type\":\"input_change\",\"pad_read\":{},"
++            "\"raw_stick\":[{},{}]}}",
++            g_referencePadRead, referenceAnalog.x, referenceAnalog.y);
++        referenceLastX = referenceAnalog.x;
++        referenceLastY = referenceAnalog.y;
++      }
++    }
+     if (i == PAD_CHAN0 && referenceButton != 0) {
+       status[i].button |= referenceButton;
+       aurora::input::Log.info(

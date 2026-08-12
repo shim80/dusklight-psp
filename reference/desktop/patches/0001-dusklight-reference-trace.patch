@@ -1,0 +1,147 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 75a8d01151..09a025bc54 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -68,6 +68,11 @@ endif ()
+ if (CMAKE_SYSTEM_NAME STREQUAL Linux)
+   set(DAWN_USE_WAYLAND ON CACHE BOOL "Enable support for Wayland surface" FORCE)
+ endif ()
++option(DUSKLIGHT_REFERENCE_TRACE "Enable repository-local behavioral reference tracing" OFF)
++if (DUSKLIGHT_REFERENCE_TRACE)
++    add_compile_definitions(DUSKLIGHT_REFERENCE_TRACE=1)
++    message(STATUS "dusklight: Enabled repository-local reference tracing")
++endif ()
+ set(AURORA_ENABLE_DVD ON CACHE BOOL "Enable DVD API support" FORCE)
+ set(AURORA_ENABLE_CARD ON CACHE BOOL "Enable CARD API support" FORCE)
+ set(AURORA_ENABLE_RMLUI ON CACHE BOOL "Enable RmlUi UI support" FORCE)
+@@ -90,7 +95,6 @@ option(DUSK_ENABLE_SENTRY_NATIVE "Enable sentry-native crash reporting support"
+ option(DUSK_PACKAGE_INSTALL "Install Dusklight with a Linux-native file structure" OFF)
+ option(DUSK_GFX_DEBUG_GROUPS "Report debug groups to the native graphics API" ${DUSK_GFX_DEBUG_GROUPS_DEFAULT})
+ option(DUSK_ENABLE_CODE_MODS "Enable code mods" OFF)
+-
+ # Edit & Continue
+ if (MSVC)
+     if ("${CMAKE_MSVC_DEBUG_INFORMATION_FORMAT}" STREQUAL "" AND CMAKE_BUILD_TYPE STREQUAL "Debug"
+diff --git a/src/d/actor/d_a_title.cpp b/src/d/actor/d_a_title.cpp
+index 5ff7dad881..a9c32ff005 100644
+--- a/src/d/actor/d_a_title.cpp
++++ b/src/d/actor/d_a_title.cpp
+@@ -19,6 +19,10 @@
+ #include "m_Do/m_Do_controller_pad.h"
+ #include "m_Do/m_Do_graphic.h"
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++#endif
++
+ #ifdef TARGET_PC
+ #include "dusk/frame_interpolation.h"
+ #include "dusk/settings.h"
+@@ -161,6 +165,29 @@ int daTitle_c::createHeapCallBack(fopAc_ac_c* actor) {
+ }
+ 
+ int daTitle_c::Execute() {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static const char* const referenceStateNames[] = {
++        "load_wait",
++        "logo_display_wait",
++        "logo_display_animation",
++        "key_wait",
++        "next_scene",
++        "fast_logo_display",
++    };
++    static const daTitle_c* referenceActor;
++    static int referenceState = -1;
++    static u64 referenceExecute = 0;
++    if (referenceActor != this || referenceState != mProcID) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++            "\"type\":\"title_state\",\"execute\":{},\"from\":{},\"to\":{},"
++            "\"state\":\"{}\"}}",
++            referenceExecute, referenceActor == this ? referenceState : -1,
++            mProcID, referenceStateNames[mProcID]);
++        referenceActor = this;
++        referenceState = mProcID;
++    }
++#endif
+ #if PLATFORM_WII || PLATFORM_SHIELD
+     mDoGph_gInf_c::resetDimming();
+ #endif
+@@ -184,6 +211,19 @@ int daTitle_c::Execute() {
+     (this->*daTitleProc[mProcID])();
+     KeyWaitAnm();
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    if (referenceState != mProcID) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++            "\"type\":\"title_state\",\"execute\":{},\"from\":{},\"to\":{},"
++            "\"state\":\"{}\"}}",
++            referenceExecute, referenceState, mProcID,
++            referenceStateNames[mProcID]);
++        referenceState = mProcID;
++    }
++    referenceExecute++;
++#endif
++
+ #if VERSION == VERSION_SHIELD_DEBUG
+     KeyWaitPosMove();
+ #endif
+diff --git a/src/d/d_file_select.cpp b/src/d/d_file_select.cpp
+index f57265aa77..3f746eb29b 100644
+--- a/src/d/d_file_select.cpp
++++ b/src/d/d_file_select.cpp
+@@ -24,6 +24,9 @@
+ #include <cstring>
+ 
+ #if TARGET_PC
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++#endif
+ #include "dusk/menu_pointer.h"
+ #include "helpers/string.hpp"
+ 
+@@ -349,6 +352,31 @@ static DataSelProcFunc DataSelProc[] = {
+ };
+ 
+ void dFile_select_c::_move() {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static const dFile_select_c* referenceFileSelect;
++    static int referenceDataProc = -1;
++    static int referenceCardProc = -1;
++    static u64 referenceMove = 0;
++    const auto referenceLogState = [&]() {
++        if (referenceFileSelect != this || referenceDataProc != mDataSelProc ||
++            referenceCardProc != mCardCheckProc)
++        {
++            DuskLog.info(
++                "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++                "\"type\":\"file_select_state\",\"move\":{},"
++                "\"data_proc\":{},\"card_proc\":{},\"select\":{},"
++                "\"is_new\":[{},{},{}],\"is_no_data\":[{},{},{}],"
++                "\"select_end\":{}}}",
++                referenceMove, mDataSelProc, mCardCheckProc, mSelectNum,
++                mIsDataNew[0], mIsDataNew[1], mIsDataNew[2],
++                mIsNoData[0], mIsNoData[1], mIsNoData[2], mIsSelectEnd);
++            referenceFileSelect = this;
++            referenceDataProc = mDataSelProc;
++            referenceCardProc = mCardCheckProc;
++        }
++    };
++    referenceLogState();
++#endif
+     #if DEBUG
+     if (g_fsHIO.title_mesg_check) {
+         titleMsgCheck();
+@@ -385,6 +413,11 @@ void dFile_select_c::_move() {
+ 
+     (this->*DataSelProc[mDataSelProc])();
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    referenceLogState();
++    referenceMove++;
++#endif
++
+     selFileWakuAnm();
+     bookIconAnm();
+     dataDelEffAnm();

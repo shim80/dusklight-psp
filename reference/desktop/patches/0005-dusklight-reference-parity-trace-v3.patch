@@ -1,0 +1,186 @@
+diff --git a/src/d/actor/d_a_alink.cpp b/src/d/actor/d_a_alink.cpp
+index a546c1a4bd..2f96ed0173 100644
+--- a/src/d/actor/d_a_alink.cpp
++++ b/src/d/actor/d_a_alink.cpp
+@@ -39,6 +39,8 @@
+ #include "d/actor/d_a_horse.h"
+ #ifdef DUSKLIGHT_REFERENCE_TRACE
+ #include "dusk/logging.h"
++#include <cstdio>
++#include <cstdlib>
+ #endif
+ #include "m_Do/m_Do_controller_pad.h"
+ #include "d/d_bomb.h"
+@@ -69,6 +71,55 @@ static int daAlink_Draw(daAlink_c* i_this);
+ static fopAc_ac_c* daAlink_searchTagKandelaar(fopAc_ac_c* i_actor, void* i_data);
+
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++namespace {
++
++bool reference_parity_trace_enabled() {
++    const char* enabled = std::getenv("DUSKLIGHT_PARITY_TRACE");
++    return enabled != NULL && enabled[0] == '1' && enabled[1] == '\0';
++}
++
++u32 reference_parity_name_hash(const char* value) {
++    u32 hash = 2166136261u;
++    while (value != NULL && *value != '\0') {
++        hash ^= static_cast<u8>(*value++);
++        hash *= 16777619u;
++    }
++    return hash;
++}
++
++void reference_parity_event(
++    u64 frame, const char* event_type, const char* payload) {
++    const char* scenario = std::getenv("DUSKLIGHT_REFERENCE_SCENARIO");
++    const char* stage = dComIfGp_getStartStageName();
++    if (!reference_parity_trace_enabled() || scenario == NULL ||
++        scenario[0] == '\0' || stage == NULL ||
++        (std::strcmp(stage, "F_SP108") != 0 &&
++         std::strcmp(stage, "D_MN10") != 0)) {
++        return;
++    }
++    const int room = dComIfGp_getStartStageRoomNo();
++    const int layer = dComIfGp_getStartStageLayer();
++    const u32 stageHash = reference_parity_name_hash(stage);
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.parity.dtrc.v3\","
++        "\"schema_version\":3,\"run_id\":\"desktop-v3\","
++        "\"scenario_id\":\"{}\",\"frame\":{},\"game_tick\":{},"
++        "\"scene_generation\":1,"
++        "\"scene_id\":\"scene:{:08x}:{}:{}:11:1\","
++        "\"stage\":\"{}\",\"room\":{},\"layer\":{},"
++        "\"source_table\":748274432,\"source_index\":0,"
++        "\"source_name_hash\":2382947721,\"process_id\":253,"
++        "\"profile_id\":253,\"actor_generation\":1,"
++        "\"model_resource_id\":0,\"model_instance_id\":0,"
++        "\"event_type\":\"{}\",\"payload\":{}}}",
++        scenario, frame, frame, stageHash, room, layer,
++        stage, room, layer, event_type, payload);
++}
++
++}  // namespace
++#endif
++
+ BOOL daAlink_c::getE3Zhint() {
+     return false;
+ }
+
+@@ -18947,6 +18998,116 @@ int daAlink_c::execute() {
+     }
+     #endif
+
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    if (reference_parity_trace_enabled()) {
++        static u64 referenceParityFrame;
++        char actorId[128] = {};
++        char modelId[192] = {};
++        std::snprintf(
++            actorId, sizeof(actorId),
++            "actor:%08x:%d:%d:2c99c300:0:253:1",
++            reference_parity_name_hash(dComIfGp_getStartStageName()),
++            dComIfGp_getStartStageRoomNo(),
++            dComIfGp_getStartStageLayer());
++        std::snprintf(
++            modelId, sizeof(modelId),
++            "model:%s:2ad6c69c:0:0:1", actorId);
++        char payload[2048] = {};
++        std::snprintf(
++            payload, sizeof(payload),
++            "{\"actor_id\":\"%s\",\"record_position\":[%g,%g,%g],"
++            "\"home_position\":[%g,%g,%g],"
++            "\"current_position\":[%g,%g,%g],"
++            "\"old_position\":[%g,%g,%g],"
++            "\"current_angle\":[%d,%d,%d],"
++            "\"shape_angle\":[%d,%d,%d],"
++            "\"velocity\":[%g,%g,%g],\"speed\":%g,"
++            "\"procedure\":%u,\"move_angle\":%d}",
++            actorId, home.pos.x, home.pos.y, home.pos.z,
++            home.pos.x, home.pos.y, home.pos.z,
++            current.pos.x, current.pos.y, current.pos.z,
++            old.pos.x, old.pos.y, old.pos.z,
++            current.angle.x, current.angle.y, current.angle.z,
++            shape_angle.x, shape_angle.y, shape_angle.z,
++            speed.x, speed.y, speed.z, speedF, mProcID, mMoveAngle);
++        reference_parity_event(
++            referenceParityFrame, "actor_transform", payload);
++
++        std::snprintf(
++            payload, sizeof(payload),
++            "{\"actor_id\":\"%s\",\"model_id\":\"%s\","
++            "\"clip_id\":%u,\"frame\":%g,\"speed\":%g,"
++            "\"loop\":true}",
++            actorId, modelId, mProcID, mUnderFrameCtrl[0].getFrame(),
++            mUnderFrameCtrl[0].getRate());
++        reference_parity_event(
++            referenceParityFrame, "animation_frame", payload);
++
++        std::snprintf(
++            payload, sizeof(payload),
++            "{\"actor_id\":\"%s\",\"origin\":[%g,%g,%g],"
++            "\"bottom\":[%g,%g,%g],\"floor\":%g}",
++            actorId, current.pos.x, current.pos.y, current.pos.z,
++            current.pos.x, mLinkAcch.GetGroundH(), current.pos.z,
++            mLinkAcch.GetGroundH());
++        reference_parity_event(
++            referenceParityFrame, "actor_collision", payload);
++
++        std::snprintf(
++            payload, sizeof(payload),
++            "{\"actor_id\":\"%s\",\"origin\":[%g,%g,%g]}",
++            actorId, attention_info.position.x,
++            attention_info.position.y, attention_info.position.z);
++        reference_parity_event(
++            referenceParityFrame, "actor_interaction", payload);
++
++        std::snprintf(
++            payload, sizeof(payload),
++            "{\"actor_id\":\"%s\",\"origin\":[%g,%g,%g],"
++            "\"ground\":%g}",
++            actorId, field_0x3834.x, field_0x3454,
++            field_0x3834.z, mLinkAcch.GetGroundH());
++        reference_parity_event(
++            referenceParityFrame, "actor_shadow", payload);
++
++        if (mpLinkModel != NULL) {
++            const MtxP base = mpLinkModel->getBaseTRMtx();
++            std::snprintf(
++                payload, sizeof(payload),
++                "{\"actor_id\":\"%s\",\"model_id\":\"%s\","
++                "\"matrix\":[[%g,%g,%g,%g],[%g,%g,%g,%g],"
++                "[%g,%g,%g,%g]]}",
++                actorId, modelId,
++                base[0][0], base[0][1], base[0][2], base[0][3],
++                base[1][0], base[1][1], base[1][2], base[1][3],
++                base[2][0], base[2][1], base[2][2], base[2][3]);
++            reference_parity_event(
++                referenceParityFrame, "model_base_matrix", payload);
++
++            constexpr int joints[] = {0, 16, 18, 19, 20, 21,
++                                      23, 24, 25, 26};
++            constexpr const char* names[] = {
++                "root", "pelvis", "left_hip", "left_knee",
++                "left_ankle", "left_foot", "right_hip",
++                "right_knee", "right_ankle", "right_foot"};
++            for (u32 index = 0; index < 10; ++index) {
++                const MtxP joint = mpLinkModel->getAnmMtx(joints[index]);
++                std::snprintf(
++                    payload, sizeof(payload),
++                    "{\"actor_id\":\"%s\",\"model_id\":\"%s\","
++                    "\"joint\":\"%s\",\"joint_index\":%d,"
++                    "\"position\":[%g,%g,%g]}",
++                    actorId, modelId, names[index], joints[index],
++                    joint[0][3], joint[1][3], joint[2][3]);
++                reference_parity_event(
++                    referenceParityFrame,
++                    "joint_reference_point", payload);
++            }
++        }
++        ++referenceParityFrame;
++    }
++#endif
++
+     return 1;
+ }
+

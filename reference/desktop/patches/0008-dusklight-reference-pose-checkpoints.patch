@@ -1,0 +1,160 @@
+--- a/src/d/actor/d_a_alink.cpp
++++ b/src/d/actor/d_a_alink.cpp
+@@ -74,6 +74,8 @@
+ #ifdef DUSKLIGHT_REFERENCE_TRACE
+ namespace {
+ 
++u64 referenceParityFrame;
++
+ bool reference_parity_trace_enabled() {
+     const char* enabled = std::getenv("DUSKLIGHT_PARITY_TRACE");
+     return enabled != NULL && enabled[0] == '1' && enabled[1] == '\0';
+@@ -18297,7 +18299,27 @@
+             mItemTrigger = 0;
+         }
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++        reference_parity_event(
++            referenceParityFrame, "animation_update_enter", "{}");
++#endif
+         allAnimePlay();
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++        {
++            char payload[512] = {};
++            std::snprintf(
++                payload, sizeof(payload),
++                "{\"clip_id\":%u,\"frame\":%g,\"speed\":%g,"
++                "\"old_frame_morph_counter\":%g,"
++                "\"old_frame_morph_weight\":%g}",
++                mUnderAnmHeap[0].getIdx(), mUnderFrameCtrl[0].getFrame(),
++                mUnderFrameCtrl[0].getRate(),
++                field_0x2060->getOldFrameMorfCounter(),
++                field_0x2060->getOldFrameRate());
++            reference_parity_event(
++                referenceParityFrame, "animation_update_exit", payload);
++        }
++#endif
+ 
+         if (mDamageTimer != 0) {
+             damageTimerCount();
+@@ -18391,7 +18413,27 @@
+             field_0x3528 = speed;
+ 
+             mLinkAcch.ClrGroundHit();
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            reference_parity_event(
++                referenceParityFrame, "grounding_enter",
++                "{\"phase\":\"actor_collision\"}");
++#endif
+             mLinkAcch.CrrPos(dComIfG_Bgsp());
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            {
++                char payload[512] = {};
++                std::snprintf(
++                    payload, sizeof(payload),
++                    "{\"phase\":\"actor_collision\","
++                    "\"actor_position\":[%g,%g,%g],\"floor\":%g,"
++                    "\"ground_hit\":%s}",
++                    current.pos.x, current.pos.y, current.pos.z,
++                    mLinkAcch.GetGroundH(),
++                    mLinkAcch.ChkGroundHit() ? "true" : "false");
++                reference_parity_event(
++                    referenceParityFrame, "grounding_exit", payload);
++            }
++#endif
+ 
+             if (checkMagneBootsOn()) {
+                 current.pos = pos;
+@@ -18621,11 +18663,29 @@
+                     field_0x2fb0--;
+                 }
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++                reference_parity_event(
++                    referenceParityFrame, "grounding_enter",
++                    "{\"phase\":\"foot_bg_check\"}");
++#endif
+                 footBgCheck();
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++                reference_parity_event(
++                    referenceParityFrame, "grounding_exit",
++                    "{\"phase\":\"foot_bg_check\"}");
++#endif
+                 handBgCheck();
+ 
+                 field_0x30c8 = mBodyAngle.y >> 1;
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++                reference_parity_event(
++                    referenceParityFrame, "pose_build_enter", "{}");
++#endif
+                 modelCalc(mpLinkModel);
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++                reference_parity_event(
++                    referenceParityFrame, "pose_build_exit", "{}");
++#endif
+ 
+                 if (field_0x2fcb != 0) {
+                     if (checkWoodShieldEquip() && mWaterY < mShieldModel->getBaseTRMtx()[1][3]) {
+@@ -19000,7 +19060,6 @@
+ 
+ #ifdef DUSKLIGHT_REFERENCE_TRACE
+     if (reference_parity_trace_enabled()) {
+-        static u64 referenceParityFrame;
+         char actorId[128] = {};
+         char modelId[192] = {};
+         std::snprintf(
+@@ -19197,16 +19256,54 @@
+                 "right_knee", "right_ankle", "right_foot"};
+             for (u32 index = 0; index < 10; ++index) {
+                 const MtxP joint = mpLinkModel->getAnmMtx(joints[index]);
++                const J3DTransformInfo* local =
++                    field_0x2060->getOldFrameTransInfo(joints[index]);
+                 std::snprintf(
+                     payload, sizeof(payload),
+                     "{\"actor_id\":\"%s\",\"model_id\":\"%s\","
++                    "\"checkpoint\":\"pose_build_exit\","
+                     "\"joint\":\"%s\",\"joint_index\":%d,"
++                    "\"old_frame_local_scale\":[%g,%g,%g],"
++                    "\"old_frame_local_rotation\":[%d,%d,%d],"
++                    "\"old_frame_local_translation\":[%g,%g,%g],"
++                    "\"global_matrix\":[[%g,%g,%g,%g],"
++                    "[%g,%g,%g,%g],[%g,%g,%g,%g]],"
+                     "\"position\":[%g,%g,%g]}",
+                     actorId, modelId, names[index], joints[index],
++                    local->mScale.x, local->mScale.y, local->mScale.z,
++                    local->mRotation.x, local->mRotation.y,
++                    local->mRotation.z,
++                    local->mTranslate.x, local->mTranslate.y,
++                    local->mTranslate.z,
++                    joint[0][0], joint[0][1], joint[0][2], joint[0][3],
++                    joint[1][0], joint[1][1], joint[1][2], joint[1][3],
++                    joint[2][0], joint[2][1], joint[2][2], joint[2][3],
+                     joint[0][3], joint[1][3], joint[2][3]);
+                 reference_parity_event(
+                     referenceParityFrame,
+                     "joint_reference_point", payload);
++            }
++
++            constexpr int soleJoints[] = {20, 25};
++            constexpr const char* soleNames[] = {
++                "left_sole_reference", "right_sole_reference"};
++            constexpr Vec soleOffsets[] = {
++                {-3.0f, 13.0f, 0.0f}, {-3.0f, -13.0f, 0.0f}};
++            for (u32 index = 0; index < 2; ++index) {
++                cXyz sole;
++                mDoMtx_multVec(
++                    mpLinkModel->getAnmMtx(soleJoints[index]),
++                    &soleOffsets[index], &sole);
++                std::snprintf(
++                    payload, sizeof(payload),
++                    "{\"actor_id\":\"%s\",\"model_id\":\"%s\","
++                    "\"checkpoint\":\"pose_build_exit\","
++                    "\"joint\":\"%s\",\"joint_index\":%d,"
++                    "\"position\":[%g,%g,%g]}",
++                    actorId, modelId, soleNames[index], soleJoints[index],
++                    sole.x, sole.y, sole.z);
++                reference_parity_event(
++                    referenceParityFrame, "joint_reference_point", payload);
+             }
+         }
+         ++referenceParityFrame;

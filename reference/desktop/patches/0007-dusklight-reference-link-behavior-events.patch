@@ -1,0 +1,137 @@
+diff --git a/src/d/actor/d_a_alink.cpp b/src/d/actor/d_a_alink.cpp
+index c176c60dc3..e808c37fa7 100644
+--- a/src/d/actor/d_a_alink.cpp
++++ b/src/d/actor/d_a_alink.cpp
+@@ -19033,12 +19033,95 @@ int daAlink_c::execute() {
+         reference_parity_event(
+             referenceParityFrame, "actor_transform", payload);
+
++        const s16 cameraYaw =
++            dCam_getControledAngleY(dComIfGp_getCamera(field_0x317c));
++        const s16 yawError =
++            static_cast<s16>(mMoveAngle - current.angle.y);
++        const bool turning =
++            mStickValue > 0.01f &&
++            std::abs(static_cast<int>(yawError)) > 0x800;
++        const u16 animationId = mUnderAnmHeap[0].getIdx();
+         std::snprintf(
+             payload, sizeof(payload),
++            "{\"actor_id\":\"%s\",\"input_normalized\":%g,"
++            "\"stick_angle\":%d,\"camera_yaw\":%d,"
++            "\"target_yaw\":%d,\"current_yaw\":%d,"
++            "\"velocity\":[%g,%g,%g],\"speed\":%g,"
++            "\"procedure\":%u,\"animation_id\":%u}",
++            actorId, mStickValue, mStickAngle, cameraYaw,
++            mMoveAngle, current.angle.y,
++            speed.x, speed.y, speed.z, speedF, mProcID, animationId);
++        reference_parity_event(
++            referenceParityFrame, "actor_state", payload);
++
++        static f32 previousStickValue = -1.0f;
++        static s16 previousStickAngle;
++        static u16 previousProcedure = 0xffff;
++        static u16 previousAnimation = 0xffff;
++        static f32 previousSpeed;
++        static bool previousTurning;
++        if (std::fabs(previousStickValue - mStickValue) > 0.0001f ||
++            previousStickAngle != mStickAngle) {
++            std::snprintf(
++                payload, sizeof(payload),
++                "{\"actor_id\":\"%s\",\"normalized\":%g,"
++                "\"stick_angle\":%d}", actorId, mStickValue, mStickAngle);
++            reference_parity_event(
++                referenceParityFrame, "input_change", payload);
++        }
++        if (previousProcedure != mProcID) {
++            std::snprintf(
++                payload, sizeof(payload),
++                "{\"actor_id\":\"%s\",\"from\":%u,\"to\":%u}",
++                actorId, previousProcedure, mProcID);
++            reference_parity_event(
++                referenceParityFrame, "locomotion_state_change", payload);
++        }
++        if (previousAnimation != animationId) {
++            std::snprintf(
++                payload, sizeof(payload),
++                "{\"actor_id\":\"%s\",\"model_id\":\"%s\","
++                "\"from\":%u,\"to\":%u}",
++                actorId, modelId, previousAnimation, animationId);
++            reference_parity_event(
++                referenceParityFrame, "animation_change", payload);
++        }
++        if (!previousTurning && turning) {
++            std::snprintf(
++                payload, sizeof(payload),
++                "{\"actor_id\":\"%s\",\"yaw_error\":%d}",
++                actorId, yawError);
++            reference_parity_event(
++                referenceParityFrame, "turn_start", payload);
++        } else if (previousTurning && !turning) {
++            std::snprintf(
++                payload, sizeof(payload),
++                "{\"actor_id\":\"%s\",\"yaw_error\":%d}",
++                actorId, yawError);
++            reference_parity_event(
++                referenceParityFrame, "turn_end", payload);
++        }
++        if (previousSpeed > 0.001f && speedF <= 0.001f) {
++            std::snprintf(
++                payload, sizeof(payload),
++                "{\"actor_id\":\"%s\",\"position\":[%g,%g,%g]}",
++                actorId, current.pos.x, current.pos.y, current.pos.z);
++            reference_parity_event(
++                referenceParityFrame, "stop", payload);
++        }
++        previousStickValue = mStickValue;
++        previousStickAngle = mStickAngle;
++        previousProcedure = mProcID;
++        previousAnimation = animationId;
++        previousSpeed = speedF;
++        previousTurning = turning;
++
++        std::snprintf(
++            payload, sizeof(payload),
+             "{\"actor_id\":\"%s\",\"model_id\":\"%s\","
+             "\"clip_id\":%u,\"frame\":%g,\"speed\":%g,"
+             "\"loop\":true}",
+-            actorId, modelId, mProcID, mUnderFrameCtrl[0].getFrame(),
++            actorId, modelId, animationId, mUnderFrameCtrl[0].getFrame(),
+             mUnderFrameCtrl[0].getRate());
+         reference_parity_event(
+             referenceParityFrame, "animation_frame", payload);
+@@ -19055,6 +19138,14 @@ int daAlink_c::execute() {
+
+         std::snprintf(
+             payload, sizeof(payload),
++            "{\"actor_id\":\"%s\",\"floor\":%g,"
++            "\"actor_origin_y\":%g,\"contact\":true}",
++            actorId, mLinkAcch.GetGroundH(), current.pos.y);
++        reference_parity_event(
++            referenceParityFrame, "floor_contact", payload);
++
++        std::snprintf(
++            payload, sizeof(payload),
+             "{\"actor_id\":\"%s\",\"origin\":[%g,%g,%g]}",
+             actorId, attention_info.position.x,
+             attention_info.position.y, attention_info.position.z);
+@@ -19069,6 +19160,20 @@ int daAlink_c::execute() {
+             field_0x3834.z, mLinkAcch.GetGroundH());
+         reference_parity_event(
+             referenceParityFrame, "actor_shadow", payload);
++
++        std::snprintf(
++            payload, sizeof(payload),
++            "{\"actor_id\":\"%s\",\"yaw\":%d,"
++            "\"eye\":[%g,%g,%g],\"target\":[%g,%g,%g]}",
++            actorId, cameraYaw,
++            dComIfGp_getCamera(field_0x317c)->view.lookat.eye.x,
++            dComIfGp_getCamera(field_0x317c)->view.lookat.eye.y,
++            dComIfGp_getCamera(field_0x317c)->view.lookat.eye.z,
++            dComIfGp_getCamera(field_0x317c)->view.lookat.center.x,
++            dComIfGp_getCamera(field_0x317c)->view.lookat.center.y,
++            dComIfGp_getCamera(field_0x317c)->view.lookat.center.z);
++        reference_parity_event(
++            referenceParityFrame, "camera_state", payload);
+
+         if (mpLinkModel != NULL) {
+             const MtxP base = mpLinkModel->getBaseTRMtx();

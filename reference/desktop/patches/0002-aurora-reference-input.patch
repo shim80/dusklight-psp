@@ -1,0 +1,140 @@
+diff --git a/lib/dolphin/pad/pad.cpp b/lib/dolphin/pad/pad.cpp
+index 2d7f795..9337ab9 100644
+--- a/lib/dolphin/pad/pad.cpp
++++ b/lib/dolphin/pad/pad.cpp
+@@ -7,8 +7,10 @@
+ #include <SDL3/SDL_mouse.h>
+ 
+ #include <array>
++#include <cstdlib>
+ #include <sys/stat.h>
+ #include <ranges>
++#include <string_view>
+ 
+ namespace {
+ constexpr int32_t k_mappingsFileVersion = 4;
+@@ -295,6 +297,64 @@ std::array<PADButton, PAD_CHANMAX> g_suppressedButtons{};
+ std::array<bool, PAD_CHANMAX> g_suppressLeftTrigger{};
+ std::array<bool, PAD_CHANMAX> g_suppressRightTrigger{};
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++uint64_t g_referencePadRead = 0;
++
++PADButton reference_button_for_read(const uint64_t read, const char** name) {
++  const char* cursor = std::getenv("DUSKLIGHT_REFERENCE_INPUT");
++  if (cursor == nullptr) {
++    return 0;
++  }
++
++  while (*cursor != '\0') {
++    char* frameEnd = nullptr;
++    const unsigned long long frame = std::strtoull(cursor, &frameEnd, 10);
++    if (frameEnd == cursor || *frameEnd != ':') {
++      return 0;
++    }
++
++    const char* buttonBegin = frameEnd + 1;
++    const char* buttonEnd = buttonBegin;
++    while (*buttonEnd != '\0' && *buttonEnd != ',') {
++      ++buttonEnd;
++    }
++    const std::string_view buttonName{
++        buttonBegin, static_cast<size_t>(buttonEnd - buttonBegin)};
++    PADButton button = 0;
++    if (buttonName == "START") {
++      button = PAD_BUTTON_START;
++      *name = "START";
++    } else if (buttonName == "A") {
++      button = PAD_BUTTON_A;
++      *name = "A";
++    } else if (buttonName == "B") {
++      button = PAD_BUTTON_B;
++      *name = "B";
++    } else if (buttonName == "UP") {
++      button = PAD_BUTTON_UP;
++      *name = "UP";
++    } else if (buttonName == "DOWN") {
++      button = PAD_BUTTON_DOWN;
++      *name = "DOWN";
++    } else if (buttonName == "LEFT") {
++      button = PAD_BUTTON_LEFT;
++      *name = "LEFT";
++    } else if (buttonName == "RIGHT") {
++      button = PAD_BUTTON_RIGHT;
++      *name = "RIGHT";
++    } else {
++      return 0;
++    }
++
++    if (frame == read) {
++      return button;
++    }
++    cursor = *buttonEnd == ',' ? buttonEnd + 1 : buttonEnd;
++  }
++  return 0;
++}
++#endif
++
+ bool is_mouse_scancode(const s32 scancode) { return scancode < PAD_KEY_INVALID; }
+ bool is_mouse_button_pressed(const s32 scancode) {
+   const int32_t buttonNum = -(scancode + 1);
+@@ -683,6 +743,18 @@ u32 PADRead(PADStatus* status) {
+   const bool captureHeldInput = g_suppressHeldOnRead && !g_blockPAD;
+   g_suppressHeldOnRead = false;
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++  const char* referenceButtonName = nullptr;
++  const PADButton referenceButton =
++      reference_button_for_read(g_referencePadRead, &referenceButtonName);
++  if (g_referencePadRead % 300 == 0) {
++    aurora::input::Log.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++        "\"type\":\"pad_clock\",\"pad_read\":{}}}",
++        g_referencePadRead);
++  }
++#endif
++
+   uint32_t rumbleSupport = 0;
+   for (uint32_t i = 0; i < PAD_CHANMAX; ++i) {
+     memset(&status[i], 0, sizeof(PADStatus));
+@@ -691,7 +763,11 @@ u32 PADRead(PADStatus* status) {
+       rumbleSupport |= PAD_CHAN0_BIT;
+     }
+     auto controller = aurora::input::get_controller_for_player(i);
+-    if (controller == nullptr && !g_keyboardBindings[i].m_mappingsSet && !g_virtualPadActive[i]) {
++    if (controller == nullptr && !g_keyboardBindings[i].m_mappingsSet && !g_virtualPadActive[i]
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++        && !(i == PAD_CHAN0 && referenceButton != 0)
++#endif
++    ) {
+       status[i].err = PAD_ERR_NO_CONTROLLER;
+       g_suppressedButtons[i] = 0;
+       g_suppressLeftTrigger[i] = false;
+@@ -900,6 +976,17 @@ u32 PADRead(PADStatus* status) {
+       }
+     }
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    if (i == PAD_CHAN0 && referenceButton != 0) {
++      status[i].button |= referenceButton;
++      aurora::input::Log.info(
++          "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++          "\"type\":\"input\",\"pad_read\":{},\"button\":\"{}\","
++          "\"blocked\":{}}}",
++          g_referencePadRead, referenceButtonName, g_blockPAD);
++    }
++#endif
++
+     if (g_blockPAD) {
+       neutralize_status(status[i]);
+     } else {
+@@ -909,6 +996,9 @@ u32 PADRead(PADStatus* status) {
+       }
+     }
+   }
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++  g_referencePadRead++;
++#endif
+   return rumbleSupport;
+ }
+ 

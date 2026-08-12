@@ -1,0 +1,615 @@
+--- a/src/f_op/f_op_actor.cpp
++++ b/src/f_op/f_op_actor.cpp
+@@ -19,6 +19,39 @@
+ #include "c/c_dylink.h"
+ #include "m_Do/m_Do_printf.h"
+
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++#include "dusk/reference_render_trace.h"
++
++namespace {
++constexpr u32 kReferenceActorCapacity = 2048;
++
++bool reference_first_actor(
++    fpc_ProcID id, fpc_ProcID* ids, u32* count) {
++    for (u32 index = 0; index < *count; ++index) {
++        if (ids[index] == id) {
++            return false;
++        }
++    }
++    if (*count >= kReferenceActorCapacity) {
++        return false;
++    }
++    ids[(*count)++] = id;
++    return true;
++}
++
++void reference_actor_event(const char* type, fopAc_ac_c* actor) {
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++        "\"type\":\"{}\",\"actor_id\":{},\"profile\":{},\"set_id\":{},"
++        "\"room\":{},\"position\":[{},{},{}]}}",
++        type, fopAcM_GetID(actor), fopAcM_GetName(actor), actor->setID,
++        fopAcM_GetRoomNo(actor), actor->current.pos.x,
++        actor->current.pos.y, actor->current.pos.z);
++}
++}  // namespace
++#endif
++
+ #if DEBUG
+ class print_error_check_c {
+ public:
+@@ -254,7 +287,29 @@
+             print_error_check_c error_check(actor, print_error_check_c::sDRAW);
+             #endif
+
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            dusk::reference_render_trace::actor_begin(
++                fopAcM_GetID(actor), fopAcM_GetName(actor));
++#endif
+             ret = fpcLf_DrawMethod((leafdraw_method_class DUSK_CONST*)actor->sub_method, actor);
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            dusk::reference_render_trace::actor_end();
++#endif
++
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            static fpc_ProcID referenceDrawIds[kReferenceActorCapacity];
++            static u32 referenceDrawCount;
++            if (reference_first_actor(
++                    fopAcM_GetID(actor), referenceDrawIds,
++                    &referenceDrawCount)) {
++                reference_actor_event("actor_draw", actor);
++                DuskLog.info(
++                    "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++                    "\"type\":\"render_submission\",\"actor_id\":{},"
++                    "\"profile\":{},\"submission\":\"actor_draw\"}}",
++                    fopAcM_GetID(actor), fopAcM_GetName(actor));
++            }
++#endif
+
+             #if DEBUG
+             }
+@@ -337,6 +392,16 @@
+
+             ret = fpcMtd_Execute((process_method_class DUSK_CONST*)actor->sub_method, actor);
+
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            static fpc_ProcID referenceExecuteIds[kReferenceActorCapacity];
++            static u32 referenceExecuteCount;
++            if (reference_first_actor(
++                    fopAcM_GetID(actor), referenceExecuteIds,
++                    &referenceExecuteCount)) {
++                reference_actor_event("actor_execute", actor);
++            }
++#endif
++
+             #if DEBUG
+             }
+             #endif
+@@ -407,6 +472,12 @@
+     #endif
+
+     ret = fpcMtd_Delete((process_method_class*)actor->sub_method, actor);
++
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    if (ret == TRUE) {
++        reference_actor_event("actor_delete", actor);
++    }
++#endif
+
+     #if DEBUG
+     }
+@@ -542,6 +613,10 @@
+
+     if (ret == cPhs_COMPLEATE_e) {
+         fopDwTg_ToDrawQ(&actor->draw_tag, fpcM_DrawPriority(actor));
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++        reference_actor_event("actor_record", actor);
++        reference_actor_event("actor_create", actor);
++#endif
+     } else if (ret == cPhs_ERROR_e) {
+         fopAcM_OnCondition(actor, 0x10);
+     }
+--- a/src/m_Do/m_Do_graphic.cpp
++++ b/src/m_Do/m_Do_graphic.cpp
+@@ -33,6 +33,9 @@
+ #include "f_op/f_op_camera_mng.h"
+ #include "f_pc/f_pc_name.h"
+ #include "m_Do/m_Do_controller_pad.h"
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/reference_render_trace.h"
++#endif
+ #include "m_Do/m_Do_graphic.h"
+ #include "m_Do/m_Do_machine.h"
+ #include "m_Do/m_Do_main.h"
+@@ -2197,6 +2200,10 @@
+ int mDoGph_Painter() {
+     ZoneScoped;
+
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    dusk::reference_render_trace::frame_begin();
++#endif
++
+     // Diagnostic: log windowNum to track game state machine progress
+     static bool sDiagLoggedWindow = false;
+     if (!sDiagLoggedWindow) {
+@@ -2874,6 +2881,10 @@
+
+     mDoGph_gInf_c::endRender();
+
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    dusk::reference_render_trace::frame_end();
++#endif
++
+     #if WIDESCREEN_SUPPORT
+     mDoGph_gInf_c::offWideZoom();
+     #endif
+--- a/libs/JSystem/src/J3DGraphBase/J3DDrawBuffer.cpp
++++ b/libs/JSystem/src/J3DGraphBase/J3DDrawBuffer.cpp
+@@ -9,6 +9,9 @@
+ #include "JSystem/J3DGraphBase/J3DMaterial.h"
+ #include "JSystem/JKernel/JKRHeap.h"
+ #include "tracy/Tracy.hpp"
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/reference_render_trace.h"
++#endif
+
+ void J3DDrawBuffer::calcZRatio() {
+     mZRatio = (mZFar - mZNear) / (f32)mEntryTableSize;
+@@ -220,8 +223,14 @@
+ void J3DDrawBuffer::draw() const {
+     J3D_ASSERT_RANGE(411, mDrawMode < J3DDrawBufDrawMode_MAX);
+
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    dusk::reference_render_trace::buffer_begin(this);
++#endif
+     drawFunc func = drawFuncTable[mDrawMode];
+     (this->*func)();
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    dusk::reference_render_trace::buffer_end(this);
++#endif
+ }
+
+ void J3DDrawBuffer::drawHead() const {
+--- a/libs/JSystem/src/J3DGraphBase/J3DPacket.cpp
++++ b/libs/JSystem/src/J3DGraphBase/J3DPacket.cpp
+@@ -10,6 +10,210 @@
+ #include "JSystem/JKernel/JKRHeap.h"
+ #include "global.h"
+ #include "tracy/Tracy.hpp"
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++#include "dusk/reference_render_trace.h"
++#endif
++
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++namespace dusk::reference_render_trace {
++struct GeometryEvidence {
++    f32 model[12];
++    f32 view[12];
++    f32 projection[16];
++    f32 depth_min;
++    f32 depth_max;
++    f32 bounds[4];
++};
++
++bool geometry_evidence(const J3DShapePacket* packet, GeometryEvidence* out) {
++    if (packet == nullptr || out == nullptr || packet->getModel() == nullptr ||
++        packet->getShape() == nullptr) return false;
++    const Mtx& model = packet->getModel()->getBaseTRMtx();
++    MtxP view = j3dSys.getViewMtx();
++    for (u32 row = 0; row < 3; ++row) {
++        for (u32 column = 0; column < 4; ++column) {
++            out->model[row * 4 + column] = model[row][column];
++            out->view[row * 4 + column] = view[row][column];
++        }
++    }
++    f32 packed[7] = {};
++    GXGetProjectionv(packed);
++    for (u32 index = 0; index < 16; ++index) out->projection[index] = 0.0f;
++    out->projection[0] = packed[1];
++    out->projection[5] = packed[3];
++    out->projection[10] = packed[5];
++    out->projection[11] = packed[6];
++    if (packed[0] == GX_PERSPECTIVE) {
++        out->projection[2] = packed[2];
++        out->projection[6] = packed[4];
++        out->projection[14] = -1.0f;
++    } else {
++        out->projection[3] = packed[2];
++        out->projection[7] = packed[4];
++        out->projection[15] = 1.0f;
++    }
++    out->depth_min = out->bounds[0] = out->bounds[1] = 3.402823466e+38F;
++    out->depth_max = out->bounds[2] = out->bounds[3] = -3.402823466e+38F;
++    const Vec& minimum = *packet->getShape()->getMin();
++    const Vec& maximum = *packet->getShape()->getMax();
++    bool projected = false;
++    for (u32 corner = 0; corner < 8; ++corner) {
++        const f32 local[3] = {
++            (corner & 1) ? maximum.x : minimum.x,
++            (corner & 2) ? maximum.y : minimum.y,
++            (corner & 4) ? maximum.z : minimum.z};
++        f32 world[3] = {};
++        f32 camera[3] = {};
++        for (u32 row = 0; row < 3; ++row) {
++            world[row] = model[row][0] * local[0] + model[row][1] * local[1] +
++                         model[row][2] * local[2] + model[row][3];
++            camera[row] = view[row][0] * world[0] + view[row][1] * world[1] +
++                          view[row][2] * world[2] + view[row][3];
++        }
++        if (camera[2] < out->depth_min) out->depth_min = camera[2];
++        if (camera[2] > out->depth_max) out->depth_max = camera[2];
++        const f32 x = out->projection[0] * camera[0] + out->projection[1] * camera[1] +
++                      out->projection[2] * camera[2] + out->projection[3];
++        const f32 y = out->projection[4] * camera[0] + out->projection[5] * camera[1] +
++                      out->projection[6] * camera[2] + out->projection[7];
++        const f32 w = out->projection[12] * camera[0] + out->projection[13] * camera[1] +
++                      out->projection[14] * camera[2] + out->projection[15];
++        if (w == 0.0f) continue;
++        const f32 sx = x / w;
++        const f32 sy = y / w;
++        if (sx < out->bounds[0]) out->bounds[0] = sx;
++        if (sy < out->bounds[1]) out->bounds[1] = sy;
++        if (sx > out->bounds[2]) out->bounds[2] = sx;
++        if (sy > out->bounds[3]) out->bounds[3] = sy;
++        projected = true;
++    }
++    return projected;
++}
++
++void trace_submission(const J3DMatPacket* material_packet,
++                      const J3DShapePacket* shape_packet) {
++    if (!active || material_packet == nullptr || shape_packet == nullptr) {
++        return;
++    }
++    const ShapeOwner* owner = owner_for(shape_packet);
++    const uint32_t actor_id = owner == nullptr ? UINT32_MAX : owner->actor_id;
++    const uint16_t profile = owner == nullptr ? UINT16_MAX : owner->profile;
++    const uint16_t model_id = owner == nullptr ? UINT16_MAX : owner->model_id;
++    const uint32_t submission_id = next_submission_id();
++    J3DMaterial* material = material_packet->getMaterial();
++    J3DShape* shape = shape_packet->getShape();
++    if (material == nullptr || shape == nullptr) {
++        return;
++    }
++    J3DPEBlock* pe = material->getPEBlock();
++    J3DZMode* depth = pe == nullptr ? nullptr : pe->getZMode();
++    J3DAlphaComp* alpha = pe == nullptr ? nullptr : pe->getAlphaComp();
++    J3DBlend* blend = pe == nullptr ? nullptr : pe->getBlend();
++    J3DFog* fog = pe == nullptr ? nullptr : pe->getFog();
++    J3DColorBlock* color = material->getColorBlock();
++
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++        "\"type\":\"render_submission\",\"frame\":{},\"pass_id\":{},"
++        "\"submission_id\":{},\"draw_order\":{},\"actor_id\":{},"
++        "\"profile\":{},\"model_id\":{},\"material_id\":{},\"shape_id\":{}}}",
++        frame_number, current_buffer_id, submission_id, submission_id,
++        actor_id, profile, model_id,
++        material->getIndex(), shape->getIndex());
++    GeometryEvidence geometry = {};
++    if (geometry_evidence(shape_packet, &geometry)) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_model_matrix\",\"frame\":{},\"submission_id\":{},"
++            "\"value\":[{},{},{},{},{},{},{},{},{},{},{},{}]}}",
++            frame_number, submission_id, geometry.model[0], geometry.model[1],
++            geometry.model[2], geometry.model[3], geometry.model[4], geometry.model[5],
++            geometry.model[6], geometry.model[7], geometry.model[8], geometry.model[9],
++            geometry.model[10], geometry.model[11]);
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_view_matrix\",\"frame\":{},\"submission_id\":{},"
++            "\"value\":[{},{},{},{},{},{},{},{},{},{},{},{}]}}",
++            frame_number, submission_id, geometry.view[0], geometry.view[1],
++            geometry.view[2], geometry.view[3], geometry.view[4], geometry.view[5],
++            geometry.view[6], geometry.view[7], geometry.view[8], geometry.view[9],
++            geometry.view[10], geometry.view[11]);
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_projection_matrix\",\"frame\":{},\"submission_id\":{},"
++            "\"value\":[{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}]}}",
++            frame_number, submission_id, geometry.projection[0], geometry.projection[1],
++            geometry.projection[2], geometry.projection[3], geometry.projection[4],
++            geometry.projection[5], geometry.projection[6], geometry.projection[7],
++            geometry.projection[8], geometry.projection[9], geometry.projection[10],
++            geometry.projection[11], geometry.projection[12], geometry.projection[13],
++            geometry.projection[14], geometry.projection[15]);
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_screen_bounds\",\"frame\":{},\"submission_id\":{},"
++            "\"camera_space_depth\":[{},{}],\"screen_bounds\":[{},{},{},{}]}}",
++            frame_number, submission_id, geometry.depth_min, geometry.depth_max,
++            geometry.bounds[0], geometry.bounds[1], geometry.bounds[2], geometry.bounds[3]);
++    }
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++        "\"type\":\"render_material_state\",\"frame\":{},\"material_id\":{},"
++        "\"material_mode\":{},\"texgen_count\":{},\"tev_stage_count\":{}}}",
++        frame_number, material->getIndex(), material->getMaterialMode(),
++        material->getTexGenNum(), material->getTevStageNum());
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++        "\"type\":\"render_texture_state\",\"frame\":{},\"material_id\":{},"
++        "\"texture0\":{}}}",
++        frame_number, material->getIndex(), material->getTexNo(0));
++    if (depth != nullptr) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_depth_state\",\"frame\":{},\"material_id\":{},"
++            "\"test\":{},\"func\":{},\"write\":{},\"compare_before_texture\":{}}}",
++            frame_number, material->getIndex(), depth->getCompareEnable(),
++            depth->getFunc(), depth->getUpdateEnable(), pe->getZCompLoc());
++    }
++    if (alpha != nullptr) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_alpha_state\",\"frame\":{},\"material_id\":{},"
++            "\"comp0\":{},\"ref0\":{},\"op\":{},\"comp1\":{},\"ref1\":{}}}",
++            frame_number, material->getIndex(), alpha->getComp0(), alpha->getRef0(),
++            alpha->getOp(), alpha->getComp1(), alpha->getRef1());
++    }
++    if (blend != nullptr) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_blend_state\",\"frame\":{},\"material_id\":{},"
++            "\"mode\":{},\"src\":{},\"dst\":{},\"logic\":{}}}",
++            frame_number, material->getIndex(),
++            static_cast<unsigned>(blend->getBlendMode()),
++            static_cast<unsigned>(blend->getSrcFactor()),
++            static_cast<unsigned>(blend->getDstFactor()),
++            static_cast<unsigned>(blend->getLogicOp()));
++    }
++    if (color != nullptr) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_cull_state\",\"frame\":{},\"material_id\":{},"
++            "\"mode\":{}}}",
++            frame_number, material->getIndex(), color->getCullMode());
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_lighting_state\",\"frame\":{},\"material_id\":{},"
++            "\"channel_count\":{}}}",
++            frame_number, material->getIndex(), color->getColorChanNum());
++    }
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++        "\"type\":\"render_fog_state\",\"frame\":{},\"material_id\":{},"
++        "\"enabled\":{}}}",
++        frame_number, material->getIndex(), fog == nullptr ? 0 : 1);
++}
++}  // namespace dusk::reference_render_trace
++#endif
+
+ J3DError J3DDisplayListObj::newDisplayList(u32 maxSize) {
+     mMaxSize = ALIGN_NEXT(maxSize, 0x20);
+@@ -209,7 +413,7 @@
+
+ void J3DMatPacket::draw() {
+     ZoneScoped;
+-#if TARGET_PC
++#if TARGET_PC
+     j3dSys.setTexture(mpTexture);
+ #endif
+     mpMaterial->load();
+@@ -231,6 +435,9 @@
+     packet->getShape()->loadPreDrawSetting();
+
+     while (packet != NULL) {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++        dusk::reference_render_trace::trace_submission(this, packet);
++#endif
+         if (packet->getDisplayListObj() != NULL) {
+             packet->getDisplayListObj()->callDL();
+         }
+@@ -408,6 +615,11 @@
+ void J3DPacket::draw() {}
+
+ int J3DMatPacket::entry(J3DDrawBuffer* pBuffer) {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    J3DShapePacket* shape_packet = getShapePacket();
++    dusk::reference_render_trace::bind_shape(
++        shape_packet, shape_packet == nullptr ? nullptr : shape_packet->getModel());
++#endif
+     J3DDrawBuffer::sortFunc func = J3DDrawBuffer::sortFuncTable[pBuffer->getSortMode()];
+     return (pBuffer->*func)(this);
+ }
+--- /dev/null
++++ b/src/dusk/reference_render_trace.h
+@@ -0,0 +1,194 @@
++#pragma once
++
++#include <stdint.h>
++
++#include "dusk/logging.h"
++
++class J3DDrawBuffer;
++class J3DModel;
++class J3DShapePacket;
++
++namespace dusk::reference_render_trace {
++
++constexpr uint32_t kFrameLimit = 4;
++constexpr uint32_t kShapeCapacity = 8192;
++constexpr uint32_t kBufferCapacity = 128;
++
++struct ShapeOwner {
++    const J3DShapePacket* shape;
++    uint32_t actor_id;
++    uint16_t profile;
++    uint16_t model_id;
++};
++
++struct ModelIdentity {
++    const J3DModel* model;
++    uint16_t id;
++};
++
++inline ShapeOwner shape_owners[kShapeCapacity];
++inline ModelIdentity models[kShapeCapacity];
++inline const J3DDrawBuffer* buffers[kBufferCapacity];
++inline uint32_t frame_number;
++inline uint32_t captured_frames;
++inline uint32_t shape_count;
++inline uint32_t model_count;
++inline uint32_t frame_shape_bindings;
++inline uint32_t submission_count;
++inline uint32_t buffer_count;
++inline uint32_t current_actor_id;
++inline uint16_t current_profile;
++inline uint16_t current_buffer_id;
++inline bool active;
++inline bool capture_started;
++inline bool frame_open;
++
++inline uint16_t buffer_id(const J3DDrawBuffer* buffer) {
++    for (uint16_t index = 0; index < buffer_count; ++index) {
++        if (buffers[index] == buffer) {
++            return index;
++        }
++    }
++    if (buffer_count >= kBufferCapacity) {
++        return UINT16_MAX;
++    }
++    buffers[buffer_count] = buffer;
++    return buffer_count++;
++}
++
++inline const ShapeOwner* owner_for(const J3DShapePacket* shape) {
++    for (uint32_t index = 0; index < shape_count; ++index) {
++        if (shape_owners[index].shape == shape) {
++            return &shape_owners[index];
++        }
++    }
++    return nullptr;
++}
++
++inline uint16_t model_id(const J3DModel* model) {
++    for (uint32_t index = 0; index < model_count; ++index) {
++        if (models[index].model == model) {
++            return models[index].id;
++        }
++    }
++    if (model == nullptr || model_count >= kShapeCapacity ||
++        model_count >= UINT16_MAX) {
++        return UINT16_MAX;
++    }
++    const uint16_t id = static_cast<uint16_t>(model_count);
++    models[model_count++] = {model, id};
++    return id;
++}
++
++inline uint32_t next_submission_id() {
++    return submission_count++;
++}
++
++inline void frame_begin() {
++    if (frame_open) {
++        return;
++    }
++    frame_open = true;
++    active = capture_started && captured_frames < kFrameLimit;
++    buffer_count = 0;
++    frame_shape_bindings = 0;
++    submission_count = 0;
++    current_actor_id = UINT32_MAX;
++    current_profile = UINT16_MAX;
++    current_buffer_id = UINT16_MAX;
++    if (active) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_frame_begin\",\"frame\":{}}}",
++            frame_number);
++    }
++}
++
++inline void frame_end() {
++    if (!frame_open) {
++        return;
++    }
++    if (active) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_frame_end\",\"frame\":{},"
++            "\"shape_bindings\":{},\"buffers\":{}}}",
++            frame_number, frame_shape_bindings, buffer_count);
++        ++captured_frames;
++    }
++    ++frame_number;
++    active = false;
++    frame_open = false;
++}
++
++inline void actor_begin(uint32_t actor_id, uint16_t profile) {
++    current_actor_id = actor_id;
++    current_profile = profile;
++}
++
++inline void actor_end() {
++    current_actor_id = UINT32_MAX;
++    current_profile = UINT16_MAX;
++}
++
++inline void bind_shape(const J3DShapePacket* shape, const J3DModel* model) {
++    if (shape == nullptr || captured_frames >= kFrameLimit ||
++        frame_shape_bindings >= kShapeCapacity) {
++        return;
++    }
++    ++frame_shape_bindings;
++    if (!capture_started) {
++        capture_started = true;
++        active = true;
++        frame_open = true;
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++            "\"type\":\"render_frame_begin\",\"frame\":{}}}",
++            frame_number);
++    }
++    for (uint32_t index = 0; index < shape_count; ++index) {
++        if (shape_owners[index].shape == shape) {
++            shape_owners[index].actor_id = current_actor_id;
++            shape_owners[index].profile = current_profile;
++            shape_owners[index].model_id = model_id(model);
++            return;
++        }
++    }
++    if (shape_count < kShapeCapacity) {
++        shape_owners[shape_count++] = {
++            shape, current_actor_id, current_profile, model_id(model)};
++    }
++}
++
++inline void buffer_begin(const J3DDrawBuffer* buffer) {
++    if (!active) {
++        return;
++    }
++    current_buffer_id = buffer_id(buffer);
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++        "\"type\":\"render_pass_begin\",\"frame\":{},\"pass_id\":{}}}",
++        frame_number, current_buffer_id);
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++        "\"type\":\"render_bucket_begin\",\"frame\":{},\"bucket_id\":{}}}",
++        frame_number, current_buffer_id);
++}
++
++inline void buffer_end(const J3DDrawBuffer* buffer) {
++    if (!active) {
++        return;
++    }
++    const uint16_t id = buffer_id(buffer);
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++        "\"type\":\"render_bucket_end\",\"frame\":{},\"bucket_id\":{}}}",
++        frame_number, id);
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.render.v1\","
++        "\"type\":\"render_pass_end\",\"frame\":{},\"pass_id\":{}}}",
++        frame_number, id);
++    current_buffer_id = UINT16_MAX;
++}
++
++}  // namespace dusk::reference_render_trace

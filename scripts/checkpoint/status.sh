@@ -7,6 +7,10 @@ if command -v git >/dev/null 2>&1 && [ -d "$ROOT/.git" ]; then
   printf 'head='; git -C "$ROOT" rev-parse HEAD
 fi
 printf '%s\n' 'key files:'
-for f in AGENTS.md docs/STATUS.md docs/RESUME.md docs/COMMIT_LEDGER.md scripts/assemble-source.sh scripts/bootstrap-repro.sh; do
+for f in \
+  AGENTS.md docs/STATUS.md docs/RESUME.md docs/COMMIT_LEDGER.md \
+  test/getawait-heart-probe/main.cpp \
+  dusklight-main/platforms/psp/include/dusk/psp/playable_runtime.hpp \
+  dusklight-main/platforms/psp/src/playable_runtime.cpp; do
   if [ -f "$ROOT/$f" ]; then printf '  OK %s\n' "$f"; else printf '  MISSING %s\n' "$f"; fi
 done

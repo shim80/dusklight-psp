@@ -1,0 +1,69 @@
+schema_version = 1
+project = "dusklight-psp-link-loader"
+retrieved_at_utc = "2026-07-26T07:37:59Z"
+classification = "EXACT_DUSKLIGHT_UPSTREAM_MATCH"
+
+[policy]
+network_default = "denied"
+network_bootstrap_only = true
+mirrors_dir = ".cache/provenance"
+downloads_dir = ".cache/downloads"
+sources_dir = ".tools/sources"
+game_image_mode = "read-only"
+
+[dusklight]
+url = "https://github.com/TwilitRealm/dusklight.git"
+commit = "1bae8a5e6a812217ca33ba533e707ecfa64b1553"
+tree = "dbd0de5c47808b5a78daa24c391166936bd6acc5"
+license = "CC0-1.0"
+mirror = ".cache/provenance/dusklight.git"
+baseline = "psp-core-smoke-v1^{commit}:dusklight-main"
+method = "Full path and blob comparison after the documented PSP-path and missing-gitlink exclusions."
+regular_entries_compared = 19175
+identical_paths_and_blobs = 19175
+content_differences = 0
+explained_differences = [
+  "extern/aurora is an absent gitlink in the imported local snapshot",
+  "platforms/psp was introduced by the local PSP port",
+  "the root import f8b6590 recorded 19172 upstream regular files as mode 100755 instead of 100644",
+]
+checkout_command = "git --git-dir=.cache/provenance/dusklight.git show 1bae8a5e6a812217ca33ba533e707ecfa64b1553"
+
+[aurora]
+url = "https://github.com/encounter/aurora.git"
+commit = "81f12f31d23ec822d8bde2031c91e94c470911eb"
+tree = "5330068f39c624dc85c20533eb0c13a40cca5570"
+license = "MIT"
+gitlink_mode = "160000"
+gitlink_path = "extern/aurora"
+mirror = ".cache/provenance/aurora.git"
+checkout = ".tools/sources/aurora/81f12f31d23ec822d8bde2031c91e94c470911eb"
+checkout_command = "git --git-dir=.cache/provenance/aurora.git worktree add --detach .tools/sources/aurora/81f12f31d23ec822d8bde2031c91e94c470911eb 81f12f31d23ec822d8bde2031c91e94c470911eb"
+consumer = "Aurora DVD backend used by Dusklight on the host only"
+
+[nod]
+url = "https://github.com/encounter/nod.git"
+tag = "v2.0.0-alpha.10"
+commit = "dc18d2ff129f05228b8510ea092d8b24c290a49a"
+tree = "96204981e7a5916f8cff2d1c730b4f1bde7aa922"
+license = "Apache-2.0 OR MIT"
+mirror = ".cache/provenance/nod.git"
+checkout = ".tools/sources/nod/dc18d2ff129f05228b8510ea092d8b24c290a49a"
+checkout_command = "git --git-dir=.cache/provenance/nod.git worktree add --detach .tools/sources/nod/dc18d2ff129f05228b8510ea092d8b24c290a49a dc18d2ff129f05228b8510ea092d8b24c290a49a"
+consumer = "Aurora DVD backend through nod::nod"
+proof = [
+  "Dusklight flake.nix pins nodVersion v2.0.0-alpha.10 and a source fetch hash",
+  "Aurora cmake/AuroraDependencyVersions.cmake pins AURORA_NOD_VERSION v2.0.0-alpha.10",
+  "Aurora cmake/AuroraNodProvider.cmake declares https://github.com/encounter/nod.git",
+  "the official Nod tag resolves to the recorded commit",
+]
+
+[nod.vendored_crates]
+url = "https://github.com/encounter/nod/releases/download/v2.0.0-alpha.10/vendored-crates-v2.0.0-alpha.10.tar.zst"
+archive = ".cache/downloads/vendored-crates-v2.0.0-alpha.10.tar.zst"
+size_bytes = 13317589
+sha256 = "e482b6733351add58e711af9880a3ccd066a0eaaac17bf7ffb07306a6925a995"
+source = "Official immutable Nod release asset metadata"
+install_dir = ".tools/sources/nod/vendor/dc18d2ff129f05228b8510ea092d8b24c290a49a"
+reason = "Build Nod from the pinned source without crates.io or a precompiled Nod binary."
+

@@ -1,0 +1,15 @@
+format=DUSKLIGHT_DESKTOP_REFERENCE_TRACE_V1
+schema=dusklight.desktop.reference.v1
+dusklight_commit=1bae8a5e6a812217ca33ba533e707ecfa64b1553
+aurora_commit=81f12f31d23ec822d8bde2031c91e94c470911eb
+run_id=trace-startup-oracle-final
+transport=direct_gui
+profile=repository_isolated
+input=2100:START,2420:LEFT,2450:A,2800:A,3100:A,3300:START,3340:START,3440:START,3480:START
+event_count=52
+network_used=false
+new_game_stage=F_SP108
+new_game_point=21
+new_game_room=1
+new_game_layer=13
+source_vanilla_modified=false

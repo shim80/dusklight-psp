@@ -1,0 +1,471 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 75a8d01151..9724479829 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -68,6 +68,11 @@ endif ()
+ if (CMAKE_SYSTEM_NAME STREQUAL Linux)
+   set(DAWN_USE_WAYLAND ON CACHE BOOL "Enable support for Wayland surface" FORCE)
+ endif ()
++option(DUSKLIGHT_REFERENCE_TRACE "Enable repository-local behavioral reference tracing" OFF)
++if (DUSKLIGHT_REFERENCE_TRACE)
++    add_compile_definitions(DUSKLIGHT_REFERENCE_TRACE=1)
++    message(STATUS "dusklight: Enabled repository-local reference tracing")
++endif ()
+ set(AURORA_ENABLE_DVD ON CACHE BOOL "Enable DVD API support" FORCE)
+ set(AURORA_ENABLE_CARD ON CACHE BOOL "Enable CARD API support" FORCE)
+ set(AURORA_ENABLE_RMLUI ON CACHE BOOL "Enable RmlUi UI support" FORCE)
+@@ -90,7 +95,6 @@ option(DUSK_ENABLE_SENTRY_NATIVE "Enable sentry-native crash reporting support"
+ option(DUSK_PACKAGE_INSTALL "Install Dusklight with a Linux-native file structure" OFF)
+ option(DUSK_GFX_DEBUG_GROUPS "Report debug groups to the native graphics API" ${DUSK_GFX_DEBUG_GROUPS_DEFAULT})
+ option(DUSK_ENABLE_CODE_MODS "Enable code mods" OFF)
+-
+ # Edit & Continue
+ if (MSVC)
+     if ("${CMAKE_MSVC_DEBUG_INFORMATION_FORMAT}" STREQUAL "" AND CMAKE_BUILD_TYPE STREQUAL "Debug"
+diff --git a/src/d/actor/d_a_alink.cpp b/src/d/actor/d_a_alink.cpp
+index 45829188db..c25dd379a0 100644
+--- a/src/d/actor/d_a_alink.cpp
++++ b/src/d/actor/d_a_alink.cpp
+@@ -37,6 +37,9 @@
+ #include "d/actor/d_a_tag_mmsg.h"
+ #include "d/actor/d_a_tag_lantern.h"
+ #include "d/actor/d_a_horse.h"
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++#endif
+ #include "m_Do/m_Do_controller_pad.h"
+ #include "d/d_bomb.h"
+ #include "d/d_meter2_info.h"
+@@ -17796,6 +17799,32 @@ int daAlink_c::procGoronRideWait() {
+ }
+ 
+ int daAlink_c::execute() {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static u64 referencePlayerFrame;
++    if (referencePlayerFrame == 0 || referencePlayerFrame % 300 == 0) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"player_state\",\"frame\":{},\"actor_id\":{},"
++            "\"position\":[{},{},{}],\"rotation\":[{},{},{}],"
++            "\"procedure\":{},\"speed\":{}}}",
++            referencePlayerFrame, fopAcM_GetID(this),
++            current.pos.x, current.pos.y, current.pos.z,
++            shape_angle.x, shape_angle.y, shape_angle.z,
++            mProcID, speedF);
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"animation_state\",\"frame\":{},\"actor_id\":{},"
++            "\"procedure\":{},\"speed\":{}}}",
++            referencePlayerFrame, fopAcM_GetID(this), mProcID, speedF);
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"collision_state\",\"frame\":{},\"actor_id\":{},"
++            "\"ground_y\":{},\"water_y\":{}}}",
++            referencePlayerFrame, fopAcM_GetID(this),
++            mLinkAcch.GetGroundH(), mWaterY);
++    }
++    referencePlayerFrame++;
++#endif
+     loadModelDVD();
+ 
+     if (checkEndResetFlg0(ERFLG0_BOSS_ROOM_WAIT) && getMidnaActor() != NULL) {
+@@ -19199,6 +19228,20 @@ int daAlink_c::moveShadowScaleLight() {
+ }
+ 
+ void daAlink_c::shadowDraw() {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static u64 referenceShadowFrame;
++    if (referenceShadowFrame == 0 || referenceShadowFrame % 300 == 0) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"shadow_request\",\"frame\":{},\"actor_id\":{},"
++            "\"kind\":\"link_ground\",\"radius\":800,"
++            "\"position\":[{},{},{}],\"ground_y\":{}}}",
++            referenceShadowFrame, fopAcM_GetID(this),
++            field_0x3834.x, field_0x3454, field_0x3834.z,
++            mLinkAcch.GetGroundH());
++    }
++    referenceShadowFrame++;
++#endif
+     daMidna_c* midna = getMidnaActor();
+     if (midna != NULL && ((midna->checkShadowModelDraw() && (field_0x2ff4 >= 0x3FF0 || !checkMidnaRide())) || midna->checkShadowModelDrawDemoForce())) {
+         return;
+@@ -19464,6 +19507,36 @@ void daAlink_c::initTevCustomColor() {
+ }
+ 
+ int daAlink_c::draw() {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static u64 referenceRenderFrame;
++    if (referenceRenderFrame == 0 || referenceRenderFrame % 300 == 0) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"environment_state\",\"frame\":{},"
++            "\"actor_ambient\":[{},{},{}],\"fog\":[{},{},{}],"
++            "\"fog_near\":{},\"fog_far\":{}}}",
++            referenceRenderFrame,
++            g_env_light.actor_amb_col.r, g_env_light.actor_amb_col.g,
++            g_env_light.actor_amb_col.b, g_env_light.fog_col.r,
++            g_env_light.fog_col.g, g_env_light.fog_col.b,
++            g_env_light.mFogNear, g_env_light.mFogFar);
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"material_state\",\"frame\":{},\"actor_id\":{},"
++            "\"light_type\":10,\"tev_color\":[{},{},{}],"
++            "\"tev_kcolor\":[{},{},{}]}}",
++            referenceRenderFrame, fopAcM_GetID(this),
++            tevStr.TevColor.r, tevStr.TevColor.g, tevStr.TevColor.b,
++            tevStr.TevKColor.r, tevStr.TevKColor.g, tevStr.TevKColor.b);
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"joint_state\",\"frame\":{},\"actor_id\":{},"
++            "\"source\":\"daAlink_c::draw\",\"root\":[{},{},{}]}}",
++            referenceRenderFrame, fopAcM_GetID(this),
++            current.pos.x, current.pos.y, current.pos.z);
++    }
++    referenceRenderFrame++;
++#endif
+     if (checkWolf()) {
+         g_env_light.settingTevStruct(9, &current.pos, &tevStr);
+     } else {
+diff --git a/src/d/actor/d_a_title.cpp b/src/d/actor/d_a_title.cpp
+index 5ff7dad881..a9c32ff005 100644
+--- a/src/d/actor/d_a_title.cpp
++++ b/src/d/actor/d_a_title.cpp
+@@ -19,6 +19,10 @@
+ #include "m_Do/m_Do_controller_pad.h"
+ #include "m_Do/m_Do_graphic.h"
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++#endif
++
+ #ifdef TARGET_PC
+ #include "dusk/frame_interpolation.h"
+ #include "dusk/settings.h"
+@@ -161,6 +165,29 @@ int daTitle_c::createHeapCallBack(fopAc_ac_c* actor) {
+ }
+ 
+ int daTitle_c::Execute() {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static const char* const referenceStateNames[] = {
++        "load_wait",
++        "logo_display_wait",
++        "logo_display_animation",
++        "key_wait",
++        "next_scene",
++        "fast_logo_display",
++    };
++    static const daTitle_c* referenceActor;
++    static int referenceState = -1;
++    static u64 referenceExecute = 0;
++    if (referenceActor != this || referenceState != mProcID) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++            "\"type\":\"title_state\",\"execute\":{},\"from\":{},\"to\":{},"
++            "\"state\":\"{}\"}}",
++            referenceExecute, referenceActor == this ? referenceState : -1,
++            mProcID, referenceStateNames[mProcID]);
++        referenceActor = this;
++        referenceState = mProcID;
++    }
++#endif
+ #if PLATFORM_WII || PLATFORM_SHIELD
+     mDoGph_gInf_c::resetDimming();
+ #endif
+@@ -184,6 +211,19 @@ int daTitle_c::Execute() {
+     (this->*daTitleProc[mProcID])();
+     KeyWaitAnm();
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    if (referenceState != mProcID) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++            "\"type\":\"title_state\",\"execute\":{},\"from\":{},\"to\":{},"
++            "\"state\":\"{}\"}}",
++            referenceExecute, referenceState, mProcID,
++            referenceStateNames[mProcID]);
++        referenceState = mProcID;
++    }
++    referenceExecute++;
++#endif
++
+ #if VERSION == VERSION_SHIELD_DEBUG
+     KeyWaitPosMove();
+ #endif
+diff --git a/src/d/d_camera.cpp b/src/d/d_camera.cpp
+index 888f9d9ccf..22f1696cb6 100644
+--- a/src/d/d_camera.cpp
++++ b/src/d/d_camera.cpp
+@@ -11160,6 +11160,34 @@ static void view_setup(camera_process_class* i_this) {
+     dComIfGd_setViewport(viewport);
+     dComIfGd_setView(view);
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static u64 referenceCameraFrame;
++    if (referenceCameraFrame == 0 || referenceCameraFrame % 300 == 0) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"camera_state\",\"frame\":{},\"source\":\"view_setup\","
++            "\"scene\":\"{}\",\"room\":{},\"active_camera\":{},"
++            "\"eye\":[{},{},{}],\"center\":[{},{},{}],\"up\":[{},{},{}],"
++            "\"fov\":{},\"aspect\":{},\"near\":{},\"far\":{},\"bank\":{},"
++            "\"view_matrix\":[{},{},{},{},{},{},{},{},{},{},{},{}],"
++            "\"projection_matrix\":[{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}]}}",
++            referenceCameraFrame, dComIfGp_getStartStageName(),
++            dComIfGp_getStartStageRoomNo(), get_camera_id(a_this),
++            view->lookat.eye.x, view->lookat.eye.y, view->lookat.eye.z,
++            view->lookat.center.x, view->lookat.center.y, view->lookat.center.z,
++            view->lookat.up.x, view->lookat.up.y, view->lookat.up.z,
++            view->fovy, view->aspect, view->near_, view->far_, view->bank,
++            view->viewMtx[0][0], view->viewMtx[0][1], view->viewMtx[0][2], view->viewMtx[0][3],
++            view->viewMtx[1][0], view->viewMtx[1][1], view->viewMtx[1][2], view->viewMtx[1][3],
++            view->viewMtx[2][0], view->viewMtx[2][1], view->viewMtx[2][2], view->viewMtx[2][3],
++            view->projMtx[0][0], view->projMtx[0][1], view->projMtx[0][2], view->projMtx[0][3],
++            view->projMtx[1][0], view->projMtx[1][1], view->projMtx[1][2], view->projMtx[1][3],
++            view->projMtx[2][0], view->projMtx[2][1], view->projMtx[2][2], view->projMtx[2][3],
++            view->projMtx[3][0], view->projMtx[3][1], view->projMtx[3][2], view->projMtx[3][3]);
++    }
++    referenceCameraFrame++;
++#endif
++
+     f32 far_;
+     f32 var_f30;
+     if (getComStat(8)) {
+diff --git a/src/d/d_file_select.cpp b/src/d/d_file_select.cpp
+index f57265aa77..bb37f4cfa9 100644
+--- a/src/d/d_file_select.cpp
++++ b/src/d/d_file_select.cpp
+@@ -24,6 +24,9 @@
+ #include <cstring>
+ 
+ #if TARGET_PC
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++#endif
+ #include "dusk/menu_pointer.h"
+ #include "helpers/string.hpp"
+ 
+@@ -349,6 +352,41 @@ static DataSelProcFunc DataSelProc[] = {
+ };
+ 
+ void dFile_select_c::_move() {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static const dFile_select_c* referenceFileSelect;
++    static int referenceDataProc = -1;
++    static int referenceCardProc = -1;
++    static u64 referenceMove = 0;
++    const auto referenceLogState = [&]() {
++        if (referenceFileSelect != this || referenceDataProc != mDataSelProc ||
++            referenceCardProc != mCardCheckProc)
++        {
++            DuskLog.info(
++                "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++                "\"type\":\"file_select_state\",\"move\":{},"
++                "\"data_proc\":{},\"card_proc\":{},\"select\":{},"
++                "\"is_new\":[{},{},{}],\"is_no_data\":[{},{},{}],"
++                "\"select_end\":{}}}",
++                referenceMove, mDataSelProc, mCardCheckProc, mSelectNum,
++                mIsDataNew[0], mIsDataNew[1], mIsDataNew[2],
++                mIsNoData[0], mIsNoData[1], mIsNoData[2], mIsSelectEnd);
++            DuskLog.info(
++                "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++                "\"type\":\"ui_pane_state\",\"frame\":{},"
++                "\"source\":\"dFile_select_c::_move\",\"pane\":\"file_select\","
++                "\"data_proc\":{},\"card_proc\":{},\"select\":{},"
++                "\"visible\":true,\"enabled\":{},\"is_new\":[{},{},{}],"
++                "\"is_no_data\":[{},{},{}]}}",
++                referenceMove, mDataSelProc, mCardCheckProc, mSelectNum,
++                !mIsSelectEnd, mIsDataNew[0], mIsDataNew[1], mIsDataNew[2],
++                mIsNoData[0], mIsNoData[1], mIsNoData[2]);
++            referenceFileSelect = this;
++            referenceDataProc = mDataSelProc;
++            referenceCardProc = mCardCheckProc;
++        }
++    };
++    referenceLogState();
++#endif
+     #if DEBUG
+     if (g_fsHIO.title_mesg_check) {
+         titleMsgCheck();
+@@ -385,6 +423,11 @@ void dFile_select_c::_move() {
+ 
+     (this->*DataSelProc[mDataSelProc])();
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    referenceLogState();
++    referenceMove++;
++#endif
++
+     selFileWakuAnm();
+     bookIconAnm();
+     dataDelEffAnm();
+diff --git a/src/d/d_s_name.cpp b/src/d/d_s_name.cpp
+index d0e33adce4..6fc3af43cd 100644
+--- a/src/d/d_s_name.cpp
++++ b/src/d/d_s_name.cpp
+@@ -11,6 +11,9 @@
+ #include "d/d_s_name.h"
+ #include "dusk/imgui/ImGuiConsole.hpp"
+ #include "dusk/livesplit.h"
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++#endif
+ #include "dusk/memory.h"
+ #include "dusk/speedrun.h"
+ #include "dusk/settings.h"
+@@ -179,6 +182,24 @@ void dScnName_c::setView() {
+     camera->view.viewMtxNoTrans[2][3] = 0.0f;
+     j3dSys.setViewMtx(camera->view.viewMtx);
+     cMtx_concatProjView(camera->view.projMtx, camera->view.viewMtx, camera->view.projViewMtx);
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    static u64 referenceCameraFrame;
++    if (referenceCameraFrame == 0 || referenceCameraFrame % 300 == 0) {
++        DuskLog.info(
++            "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++            "\"type\":\"camera_state\",\"frame\":{},\"source\":\"dScnName_c::setView\","
++            "\"eye\":[{},{},{}],\"center\":[{},{},{}],\"up\":[0,1,0],"
++            "\"fov\":{},\"aspect\":{},\"near\":{},\"far\":{},"
++            "\"active_camera\":0,\"state\":\"file_select\"}}",
++            referenceCameraFrame,
++            camera->view.lookat.eye.x, camera->view.lookat.eye.y,
++            camera->view.lookat.eye.z, camera->view.lookat.center.x,
++            camera->view.lookat.center.y, camera->view.lookat.center.z,
++            camera->view.fovy, camera->view.aspect,
++            camera->view.near_, camera->view.far_);
++    }
++    referenceCameraFrame++;
++#endif
+ }
+ 
+ #if PLATFORM_WII || PLATFORM_SHIELD
+@@ -410,6 +431,24 @@ void dScnName_c::changeGameScene() {
+         dComIfGp_offEnableNextStage();
+ 
+         if (dFs_c->isDataNew(dFs_c->getSelectNum())) {
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            static bool referenceTransitionLogged;
++            if (!referenceTransitionLogged) {
++                DuskLog.info(
++                    "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v1\","
++                    "\"type\":\"new_game_transition\",\"stage\":\"F_SP108\","
++                    "\"point\":21,\"room\":1,\"layer\":13,\"select\":{}}}",
++                    dFs_c->getSelectNum());
++                DuskLog.info(
++                    "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++                    "\"type\":\"resource_state\",\"frame\":0,"
++                    "\"source\":\"dScnName_c::execute\",\"operation\":\"stage_request\","
++                    "\"resource\":\"F_SP108\",\"point\":21,\"room\":1,\"layer\":13,"
++                    "\"select\":{},\"status\":\"requested\"}}",
++                    dFs_c->getSelectNum());
++                referenceTransitionLogged = true;
++            }
++#endif
+             dComIfGp_setNextStage("F_SP108", 21, 1, 13);
+         }
+         
+diff --git a/src/f_op/f_op_actor.cpp b/src/f_op/f_op_actor.cpp
+index 9cf34de7ff..898d8675cb 100644
+--- a/src/f_op/f_op_actor.cpp
++++ b/src/f_op/f_op_actor.cpp
+@@ -19,6 +19,38 @@
+ #include "c/c_dylink.h"
+ #include "m_Do/m_Do_printf.h"
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++#include "dusk/logging.h"
++
++namespace {
++constexpr u32 kReferenceActorCapacity = 2048;
++
++bool reference_first_actor(
++    fpc_ProcID id, fpc_ProcID* ids, u32* count) {
++    for (u32 index = 0; index < *count; ++index) {
++        if (ids[index] == id) {
++            return false;
++        }
++    }
++    if (*count >= kReferenceActorCapacity) {
++        return false;
++    }
++    ids[(*count)++] = id;
++    return true;
++}
++
++void reference_actor_event(const char* type, fopAc_ac_c* actor) {
++    DuskLog.info(
++        "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++        "\"type\":\"{}\",\"actor_id\":{},\"profile\":{},\"set_id\":{},"
++        "\"room\":{},\"position\":[{},{},{}]}}",
++        type, fopAcM_GetID(actor), fopAcM_GetName(actor), actor->setID,
++        fopAcM_GetRoomNo(actor), actor->current.pos.x,
++        actor->current.pos.y, actor->current.pos.z);
++}
++}  // namespace
++#endif
++
+ #if DEBUG
+ class print_error_check_c {
+ public:
+@@ -256,6 +288,21 @@ static int fopAc_Draw(void* i_this) {
+ 
+             ret = fpcLf_DrawMethod((leafdraw_method_class DUSK_CONST*)actor->sub_method, actor);
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            static fpc_ProcID referenceDrawIds[kReferenceActorCapacity];
++            static u32 referenceDrawCount;
++            if (reference_first_actor(
++                    fopAcM_GetID(actor), referenceDrawIds,
++                    &referenceDrawCount)) {
++                reference_actor_event("actor_draw", actor);
++                DuskLog.info(
++                    "[REFTRACE] {{\"schema\":\"dusklight.desktop.reference.v2\","
++                    "\"type\":\"render_submission\",\"actor_id\":{},"
++                    "\"profile\":{},\"submission\":\"actor_draw\"}}",
++                    fopAcM_GetID(actor), fopAcM_GetName(actor));
++            }
++#endif
++
+             #if DEBUG
+             }
+ 
+@@ -337,6 +384,16 @@ static int fopAc_Execute(void* i_this) {
+ 
+             ret = fpcMtd_Execute((process_method_class DUSK_CONST*)actor->sub_method, actor);
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++            static fpc_ProcID referenceExecuteIds[kReferenceActorCapacity];
++            static u32 referenceExecuteCount;
++            if (reference_first_actor(
++                    fopAcM_GetID(actor), referenceExecuteIds,
++                    &referenceExecuteCount)) {
++                reference_actor_event("actor_execute", actor);
++            }
++#endif
++
+             #if DEBUG
+             }
+             #endif
+@@ -408,6 +465,12 @@ static int fopAc_Delete(void* i_this) {
+ 
+     ret = fpcMtd_Delete((process_method_class*)actor->sub_method, actor);
+ 
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++    if (ret == TRUE) {
++        reference_actor_event("actor_delete", actor);
++    }
++#endif
++
+     #if DEBUG
+     }
+     #endif
+@@ -542,6 +605,10 @@ static int fopAc_Create(void* i_this) {
+ 
+     if (ret == cPhs_COMPLEATE_e) {
+         fopDwTg_ToDrawQ(&actor->draw_tag, fpcM_DrawPriority(actor));
++#ifdef DUSKLIGHT_REFERENCE_TRACE
++        reference_actor_event("actor_record", actor);
++        reference_actor_event("actor_create", actor);
++#endif
+     } else if (ret == cPhs_ERROR_e) {
+         fopAcM_OnCondition(actor, 0x10);
+     }
