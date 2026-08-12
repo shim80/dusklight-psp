@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/source-demo-item-commit
+      - agent/fix-psp-import-order
   workflow_dispatch:
 
 jobs:
@@ -33,13 +34,22 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
-      - name: Build PSP EBOOT
+      - name: Build PSP EBOOT and verify import ordering
         run: |
           export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
           export PSPSDK="$PSPDEV/psp/sdk"
           export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
-          cmake --build "$GITHUB_WORKSPACE/.work/build/chest-source-full" -j 4
+          build_log="$RUNNER_TEMP/chest-source-full-build.log"
+          set -o pipefail
+          cmake --build "$GITHUB_WORKSPACE/.work/build/chest-source-full" \
+            -j 4 --verbose 2>&1 | tee "$build_log"
           test -f "$GITHUB_WORKSPACE/.work/build/chest-source-full/EBOOT.PBP"
+          if grep -Fq \
+            "Warning: could not fixup imports, stubs out of order." \
+            "$build_log"; then
+            echo "PSP import stubs are not linked in SDK order." >&2
+            exit 1
+          fi
 
       - name: Record EBOOT checksum
         run: sha256sum "$GITHUB_WORKSPACE/.work/build/chest-source-full/EBOOT.PBP"
