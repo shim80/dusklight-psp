@@ -2,7 +2,7 @@
 
 Gameplay-first PSP port of **Dusklight / Twilight Princess decompilation work**, maintained as a source-faithful compatibility effort for Sony PSP.
 
-The priority is to make the game finishable from beginning to end with gameplay behavior matching the source game: player procedures, room transitions, doors, chests, item-get, inventory, UI, NPCs, enemies, bosses, maps, dungeons, scripted events and cinematics. Rendering stays conservative on PSP until gameplay parity is substantially complete.
+The priority is a finishable game with source-matching gameplay: player procedures, room transitions, doors, chests, item-get, inventory, UI, NPCs, enemies, bosses, maps, dungeons, scripted events and cinematics. Rendering stays conservative until gameplay parity is substantially complete.
 
 ## Current checkpoint
 
@@ -12,33 +12,37 @@ The next integration step is the complete source-driven chest lifecycle:
 
 `interaction -> DEFAULT_TREASURE_NORMAL -> BOXOP -> GETA -> Demo_Item show -> GETAWAIT -> message -> dead() -> execItemGet() -> inventory/treasure bit -> persistence -> locomotion`.
 
-Read `AGENTS.md`, `docs/STATUS.md` and `docs/RESUME.md` before changing code.
+Read `AGENTS.md`, `docs/STATUS.md`, `docs/RESUME.md` and `docs/EXTERNAL_HANDOFF.md` before changing code.
 
-## Reconstruct the PSP source snapshot
+## Reproduce the validated development environment
 
-The PSP-specific source/tests/scripts snapshot is preserved under `source-overlay/code-overlay-b64/`. Run:
+The PSP-specific compatibility source, tests, scripts and recovered reports are **directly versioned in this repository**. The old publication-time `source-overlay/` transport is no longer part of `main` and is not required.
+
+For the exact validated Linux x86_64 environment:
 
 ```sh
-./source-overlay/reconstruct.sh /tmp/dusklight-psp-code-overlay.tar.xz
-mkdir -p /tmp/dusklight-psp-overlay
-tar -xJf /tmp/dusklight-psp-code-overlay.tar.xz -C /tmp/dusklight-psp-overlay
+./scripts/verify-handoff.sh
+./scripts/bootstrap-repro.sh
 ```
 
-Canonical archive SHA-256:
+`bootstrap-repro.sh` downloads the pinned PSPDEV/PSPSDK and PPSSPP releases, verifies their SHA-256 values, and assembles the pinned upstream Dusklight/Aurora/Nod source with this repository's PSP tree under `.work/assembled/`.
 
-`ce56f4d674c2faad781dfd53ae1ff3a5e7110d29a3ecfab756947c099a582527`
+For the older cross-platform tool bootstrap, `scripts/bootstrap-tools.sh` / `scripts/bootstrap-tools.ps1` use `toolchain/manifest.lock`. Those paths are useful for development, but the exact validated campaign baseline is Linux x86_64 as documented in `toolchain/REPRODUCIBLE_ENVIRONMENT.md`.
 
-See `docs/REPRODUCIBILITY.md` for upstream pins and commercial-data rules.
+Commercial Nintendo data is intentionally excluded. A contributor must supply a legally obtained supported game image locally when original assets need regeneration.
 
 ## Repository guide
 
-- `AGENTS.md` — mandatory project/agent rules.
+- `AGENTS.md` — mandatory project/agent rules and priority order.
 - `docs/STATUS.md` — authoritative checkpoint and open work.
-- `docs/RESUME.md` — restart protocol for a fresh session/agent.
+- `docs/RESUME.md` — exact restart protocol for a fresh session/agent.
+- `docs/EXTERNAL_HANDOFF.md` — clean-room handoff instructions and known boundaries.
 - `docs/ROADMAP.md` — gameplay-first phase ordering.
 - `docs/COMMIT_LEDGER.md` — historical/reconstructed provenance.
-- `docs/REPRODUCIBILITY.md` — source reconstruction and asset policy.
-- `docs/reports/200-p1-getawait-heart-checkpoint.md` — detailed P1 report.
+- `docs/REPRODUCIBILITY.md` — source, toolchain and asset policy.
+- `docs/reports/` — recovered causal campaign reports and P1 evidence.
+- `test/getawait-heart-probe/` — latest preserved visible GETAWAIT Heart Piece proof harness.
+- `test/chest-source-full/` — full chest-event integration harness under active development.
 - `CONTRIBUTING.md` — contribution and evidence discipline.
 
-Commercial Nintendo data is intentionally excluded. Never fabricate traces, screenshots, metrics, assets or unsupported source behavior.
+Never fabricate traces, screenshots, metrics, assets or unsupported source behavior.

@@ -1,0 +1,129 @@
+schema_version = 1
+project = "dusklight-psp"
+
+[policy]
+network_default = "denied"
+downloads_dir = ".cache/downloads"
+tools_dir = ".tools"
+require_sha256 = true
+allow_pending_hash_install = false
+
+[[tool]]
+id = "pspdev-macos-arm64"
+status = "required"
+version = "20260701"
+tag = "v20260701"
+source_url = "https://github.com/pspdev/pspdev"
+download_url = "https://github.com/pspdev/pspdev/releases/download/v20260701/pspdev-macos-latest-arm64.tar.gz"
+archive = "pspdev-macos-latest-arm64.tar.gz"
+archive_format = "tar.gz"
+archive_root = "pspdev"
+installed_filename = ""
+sha256 = "3716c37b63bd4821f60faecf7fe547764c2c0a8b070989d59156209107255177"
+size_approx_mb = 148.0
+install_dir = ".tools/pspdev"
+
+[[tool]]
+id = "pspdev-macos-x86_64"
+status = "optional"
+version = "20260701"
+tag = "v20260701"
+source_url = "https://github.com/pspdev/pspdev"
+download_url = "https://github.com/pspdev/pspdev/releases/download/v20260701/pspdev-macos-15-intel-x86_64.tar.gz"
+archive = "pspdev-macos-15-intel-x86_64.tar.gz"
+archive_format = "tar.gz"
+archive_root = "pspdev"
+installed_filename = ""
+sha256 = "1aacc1e448d2e1e1dcc6942860cae9cf9668835c5fd981967f04ab004c5a49ef"
+size_approx_mb = 156.0
+install_dir = ".tools/pspdev"
+
+[[tool]]
+id = "pspdev-ubuntu-x86_64"
+status = "required"
+version = "20260701"
+tag = "v20260701"
+source_url = "https://github.com/pspdev/pspdev"
+download_url = "https://github.com/pspdev/pspdev/releases/download/v20260701/pspdev-ubuntu-latest-x86_64.tar.gz"
+archive = "pspdev-ubuntu-latest-x86_64.tar.gz"
+archive_format = "tar.gz"
+archive_root = "pspdev"
+installed_filename = ""
+sha256 = "f8f2f2235995836188e5fce2e6225c4b17a47232ea82dd850dbf7a5d99c90587"
+size_approx_mb = 166.0
+install_dir = ".tools/pspdev"
+
+[[tool]]
+id = "pspdev-ubuntu-arm64"
+status = "optional"
+version = "20260701"
+tag = "v20260701"
+source_url = "https://github.com/pspdev/pspdev"
+download_url = "https://github.com/pspdev/pspdev/releases/download/v20260701/pspdev-ubuntu-24.04-arm-arm64.tar.gz"
+archive = "pspdev-ubuntu-24.04-arm-arm64.tar.gz"
+archive_format = "tar.gz"
+archive_root = "pspdev"
+installed_filename = ""
+sha256 = "753dc2ee7dbc5aa21f21c4f71442d5ce30be467a78bf0c4feb752a6f012835f3"
+size_approx_mb = 164.0
+install_dir = ".tools/pspdev"
+
+[[tool]]
+id = "ppsspp-macos"
+status = "recommended"
+version = "1.20.4"
+tag = "v1.20.4"
+source_url = "https://github.com/hrydgard/ppsspp"
+download_url = "https://github.com/hrydgard/ppsspp/releases/download/v1.20.4/PPSSPPSDL-macOS-v1.20.4.zip"
+archive = "PPSSPPSDL-macOS-v1.20.4.zip"
+archive_format = "zip"
+archive_root = "."
+installed_filename = ""
+sha256 = "fb32a215861a293c28f641bf47f3164766ba512214025f4457796c8d14242665"
+size_approx_mb = 35.7
+install_dir = ".tools/ppsspp"
+
+[[tool]]
+id = "ppsspp-linux-x86_64"
+status = "recommended"
+version = "1.20.4"
+tag = "v1.20.4"
+source_url = "https://github.com/hrydgard/ppsspp"
+download_url = "https://github.com/hrydgard/ppsspp/releases/download/v1.20.4/PPSSPP-v1.20.4-anylinux-x86_64.AppImage"
+archive = "PPSSPP-v1.20.4-anylinux-x86_64.AppImage"
+archive_format = "file"
+archive_root = "."
+installed_filename = "PPSSPP.AppImage"
+sha256 = "661c098e6b7f7610171a57b7c533ce8bba6f2312b71e76d61e850461973eba21"
+size_approx_mb = 48.3
+install_dir = ".tools/ppsspp"
+
+[[tool]]
+id = "ppsspp-linux-arm64"
+status = "optional"
+version = "1.20.4"
+tag = "v1.20.4"
+source_url = "https://github.com/hrydgard/ppsspp"
+download_url = "https://github.com/hrydgard/ppsspp/releases/download/v1.20.4/PPSSPP-v1.20.4-anylinux-aarch64.AppImage"
+archive = "PPSSPP-v1.20.4-anylinux-aarch64.AppImage"
+archive_format = "file"
+archive_root = "."
+installed_filename = "PPSSPP.AppImage"
+sha256 = "18c1d515fd99b0b10ca5fa8cbab192f6d4c9d8a10381e16f5de8fb8f9d39bbe1"
+size_approx_mb = 46.3
+install_dir = ".tools/ppsspp"
+
+[[tool]]
+id = "psplinkusb-source"
+status = "deferred"
+version = "3.2.1"
+tag = "v3.2.1"
+source_url = "https://github.com/pspdev/psplinkusb"
+download_url = "https://github.com/pspdev/psplinkusb/archive/refs/tags/v3.2.1.tar.gz"
+archive = "psplinkusb-v3.2.1.tar.gz"
+archive_format = "tar.gz"
+archive_root = "psplinkusb-3.2.1"
+installed_filename = ""
+sha256 = "pending"
+size_approx_mb = 1.0
+install_dir = ".tools/psplinkusb"

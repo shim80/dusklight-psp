@@ -1,0 +1,59 @@
+# Build, tools and temporary state
+/build/
+/.tmp/
+/.tools/
+/.cache/
+/.work/
+/.test-data/
+/tmp/
+/logs/
+/artifacts/
+
+# Commercial game images
+*.iso
+*.gcm
+*.wbfs
+*.rvz
+*.wad
+/game iso/
+/data/
+
+# Extracted Nintendo resource formats
+*.arc
+*.bmd
+*.bdl
+*.bck
+*.brk
+*.btk
+*.btp
+*.bpk
+*.bti
+*.dzr
+*.dzs
+*.szs
+*.rarc
+
+# Generated PSP resource packages
+*.dprm
+*.dptx
+*.dpan
+*.dpcl
+*.dpsc
+*.dpui
+*.dpsk
+*.dpsu
+*.dpst
+
+# Emulator runtime/profile state
+/memstick/
+/PSP/
+/ppsspp.ini
+/controls.ini
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
