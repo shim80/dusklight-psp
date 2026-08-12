@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <limits>
 
 namespace dusk::psp {
 namespace {
@@ -177,6 +178,34 @@ bool make_game_relative_path(
         set_error(-11, "game relative path exceeds output capacity");
         return false;
     }
+    return true;
+}
+
+bool file_size(const char* path, std::uint32_t* size) {
+    if (path == nullptr || size == nullptr) {
+        set_error(-12, "invalid file size request");
+        return false;
+    }
+    *size = 0;
+    std::FILE* file = std::fopen(path, "rb");
+    if (file == nullptr) {
+        set_error(-13, "unable to open file for sizing");
+        return false;
+    }
+    if (std::fseek(file, 0, SEEK_END) != 0) {
+        std::fclose(file);
+        set_error(-14, "unable to seek file for sizing");
+        return false;
+    }
+    const long length = std::ftell(file);
+    const int close_result = std::fclose(file);
+    if (length <= 0 || close_result != 0 ||
+        static_cast<unsigned long>(length) >
+            static_cast<unsigned long>(std::numeric_limits<std::uint32_t>::max())) {
+        set_error(-15, "invalid file size");
+        return false;
+    }
+    *size = static_cast<std::uint32_t>(length);
     return true;
 }
 
