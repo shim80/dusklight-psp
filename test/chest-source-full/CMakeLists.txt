@@ -8,8 +8,11 @@ target_include_directories(chest_source_full BEFORE PRIVATE
     "${DUSKLIGHT_SOURCE_ROOT}/platforms/psp/compat/include")
 target_compile_options(chest_source_full PRIVATE
     -O2 -G0 -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti)
+# psp-g++ appends the standard PSPSDK import stubs in the required order.
+# Keep only the non-default GU utility libraries explicit so project archives
+# are resolved before the SDK stubs processed by psp-fixup-imports.
 target_link_libraries(chest_source_full PRIVATE
-    dusk_psp_runtime pspgum pspgu pspge pspdisplay pspdebug pspctrl)
+    dusk_psp_runtime pspgum pspgu)
 create_pbp_file(
     TARGET chest_source_full
     TITLE "Dusklight Source Treasure"
