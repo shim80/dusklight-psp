@@ -1,0 +1,81 @@
+name: PSP startup save flow
+
+on:
+  push:
+    branches:
+      - agent/startup-save-flow
+  workflow_dispatch:
+
+jobs:
+  startup-save:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl xz-utils xvfb imagemagick xdotool libgl1 libegl1
+
+      - name: Verify host save-flow semantics
+        run: |
+          cmake -S test/startup-save-host -B .work/build/startup-save-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/startup-save-host -j 4
+          ./.work/build/startup-save-host/startup_save_host_test | tee .work/startup-save-host.log
+          grep -F 'STARTUP_SAVE_FLOW_HOST_OK' .work/startup-save-host.log
+
+      - name: Bootstrap pinned PSP toolchain and PPSSPP
+        run: ./scripts/bootstrap-repro.sh
+
+      - name: Build PSP quest-log EBOOT
+        run: |
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake -S test/startup-save-psp -B .work/build/startup-save-psp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/startup-save-psp -j 4
+          test -f .work/build/startup-save-psp/EBOOT.PBP
+          sha256sum .work/build/startup-save-psp/EBOOT.PBP | tee .work/startup-save-eboot.sha256
+
+      - name: Run EBOOT in pinned PPSSPP and capture real emulator window
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set -euxo pipefail
+          PPSSPP="$GITHUB_WORKSPACE/.tools/ppsspp/PPSSPP-v1.20.4-anylinux-x86_64.AppImage"
+          mkdir -p .work/ppsspp-app
+          cd .work/ppsspp-app
+          "$PPSSPP" --appimage-extract >/dev/null
+          cd "$GITHUB_WORKSPACE"
+          Xvfb :99 -screen 0 1280x720x24 >.work/xvfb.log 2>&1 &
+          XVFB_PID=$!
+          export DISPLAY=:99
+          sleep 2
+          .work/ppsspp-app/squashfs-root/AppRun .work/build/startup-save-psp/EBOOT.PBP >.work/ppsspp.log 2>&1 &
+          PPSSPP_PID=$!
+          sleep 8
+          kill -0 "$PPSSPP_PID"
+          WINDOW_ID="$(xdotool search --name 'PPSSPP' 2>/dev/null | head -n 1 || true)"
+          if [ -n "$WINDOW_ID" ]; then
+            import -window "$WINDOW_ID" .work/dusklight-psp-save-select.png
+          else
+            import -window root .work/dusklight-psp-save-select.png
+          fi
+          test -s .work/dusklight-psp-save-select.png
+          identify .work/dusklight-psp-save-select.png
+          kill "$PPSSPP_PID" || true
+          kill "$XVFB_PID" || true
+
+      - name: Upload PSP EBOOT and PPSSPP evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-psp-startup-save-checkpoint
+          if-no-files-found: error
+          path: |
+            .work/build/startup-save-psp/EBOOT.PBP
+            .work/startup-save-eboot.sha256
+            .work/startup-save-host.log
+            .work/dusklight-psp-save-select.png
+            .work/ppsspp.log
