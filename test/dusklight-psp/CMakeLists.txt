@@ -4,29 +4,21 @@ project(dusklight_psp_reconstructed_canonical LANGUAGES C CXX)
 set(DUSKLIGHT_SOURCE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../dusklight-main")
 set(DUSK_PSP_ROOT "${DUSKLIGHT_SOURCE_ROOT}/platforms/psp")
 
-# Reconstructed canonical entry target. The historical test/dusklight-psp
-# launcher was lost from the reconstructed repository, while packaging and
-# validation scripts still depend on this target/path. This target now owns a
-# small PSP bootstrap and the canonical startup/save -> room handoff driver.
-# Public CI can compile and boot this path without proprietary-derived assets;
-# asset-backed first-playable validation remains a separate release gate.
+# Reuse the project's canonical PSP library graph so the reconstructed EBOOT
+# compiles against the same gameplay/animation/renderer dependencies as the
+# rest of the port instead of maintaining a divergent hand-written source
+# list here.
+add_subdirectory(
+    "${DUSK_PSP_ROOT}"
+    "${CMAKE_BINARY_DIR}/dusklight-psp-runtime"
+)
+
 add_executable(dusklight_psp
     main.cpp
     "${DUSK_PSP_ROOT}/src/canonical_game.cpp"
-    "${DUSK_PSP_ROOT}/src/platform.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_assets.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_common_loader.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_room_loader.cpp"
-    "${DUSK_PSP_ROOT}/src/playable_package.cpp"
-    "${DUSK_PSP_ROOT}/src/actor_runtime.cpp"
-    "${DUSK_PSP_ROOT}/src/real_room_runtime.cpp"
-    "${DUSK_PSP_ROOT}/src/room_collision.cpp"
-    "${DUSK_PSP_ROOT}/src/room_package.cpp"
-    "${DUSK_PSP_ROOT}/src/save_runtime.cpp"
-    "${DUSK_PSP_ROOT}/src/save_storage.cpp"
-    "${DUSK_PSP_ROOT}/src/startup_package.cpp"
-    "${DUSK_PSP_ROOT}/src/startup_runtime.cpp"
-    "${DUSK_PSP_ROOT}/src/startup_save_flow.cpp"
     "${DUSK_PSP_ROOT}/src/psp_controls.cpp"
 )
 
@@ -35,7 +27,10 @@ target_compile_features(dusklight_psp PRIVATE cxx_std_20)
 target_compile_options(dusklight_psp PRIVATE
     -O2 -G0 -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
 )
-target_link_libraries(dusklight_psp PRIVATE pspdebug pspctrl pspdisplay pspge)
+target_link_libraries(dusklight_psp PRIVATE
+    dusk_psp_runtime
+    pspdebug pspctrl pspdisplay pspge pspgu pspgum
+)
 set_target_properties(dusklight_psp PROPERTIES OUTPUT_NAME "dusklight_psp.elf")
 
 create_pbp_file(
