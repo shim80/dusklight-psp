@@ -66,6 +66,11 @@ jobs:
             dusklight-main/platforms/psp/include/dusk/psp/platform.hpp; do
             git checkout "$validation_ref" -- "$path"
           done
+          # This proof must exercise alpha-test and alpha-blend room passes.
+          sed -i 's/presentation::Profile::OpaqueOnly/presentation::Profile::Game/' \
+            dusklight-main/platforms/psp/src/canonical_game.cpp
+          grep -Fq 'output.presentation = presentation::Profile::Game;' \
+            dusklight-main/platforms/psp/src/canonical_game.cpp
 
       - name: Install host dependencies
         run: |
