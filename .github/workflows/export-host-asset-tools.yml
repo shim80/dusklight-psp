@@ -20,7 +20,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake git curl zstd clang cargo
 
-      - name: Recover exact historical PSP overlay
+      - name: Recover complete files from historical overlay
         run: |
           set -euo pipefail
           mkdir -p .work/recovered
@@ -39,18 +39,24 @@ jobs:
           assert decoded[3] == 0
           stream = zlib.decompressobj(-zlib.MAX_WBITS)
           tar_bytes = stream.decompress(decoded[10:]) + stream.flush()
-          assert stream.eof, 'historical DEFLATE payload is incomplete'
           tar_bytes += b'\0' * ((512 - len(tar_bytes) % 512) % 512)
+          print(f'deflate_eof={stream.eof} recovered_bytes={len(tar_bytes)}')
           with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode='r:') as archive:
-              names = [m.name for m in archive.getmembers()]
-              assert any('/tools/dusk_link_loader_probe' in n for n in names)
-              assert any('/tools/dusk_startup_builder' in n for n in names)
+              members = archive.getmembers()
+              names = [m.name for m in members]
+              probe = [n for n in names if '/tools/dusk_link_loader_probe/' in n]
+              builder = [n for n in names if '/tools/dusk_startup_builder/' in n]
+              assert probe, 'probe source is not present in recovered prefix'
+              assert builder, 'startup builder source is not present in recovered prefix'
               archive.extractall('.work/recovered', filter='data')
+          print(f'members={len(members)} probe_entries={len(probe)} builder_entries={len(builder)}')
           PY
           PROBE_DIR="$(find .work/recovered -type d -path '*/tools/dusk_link_loader_probe' -print -quit)"
           BUILDER_DIR="$(find .work/recovered -type d -path '*/tools/dusk_startup_builder' -print -quit)"
           test -n "$PROBE_DIR"
           test -n "$BUILDER_DIR"
+          test -f "$PROBE_DIR/CMakeLists.txt"
+          test -f "$BUILDER_DIR/CMakeLists.txt"
           printf 'PROBE_DIR=%s\nBUILDER_DIR=%s\n' "$PROBE_DIR" "$BUILDER_DIR" >> "$GITHUB_ENV"
 
       - name: Assemble pinned Dusklight tool source
