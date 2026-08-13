@@ -24,6 +24,7 @@ add_executable(dusklight_psp
     "${DUSK_PSP_ROOT}/src/playable_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/actor_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/real_room_runtime.cpp"
+    "${DUSK_PSP_ROOT}/src/movebg_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/room_collision.cpp"
     "${DUSK_PSP_ROOT}/src/room_package.cpp"
     "${DUSK_PSP_ROOT}/src/environment_runtime.cpp"
