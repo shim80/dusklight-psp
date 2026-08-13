@@ -1,0 +1,27 @@
+name: Export PulseAudio temporary
+
+on:
+  push:
+    branches:
+      - agent/fsp108-alpha-test-foliage-v2
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download PulseAudio packages
+        run: |
+          sudo apt-get update
+          mkdir -p .work/pulse-debs
+          cd .work/pulse-debs
+          apt-get download pulseaudio pulseaudio-utils libpulse0 libpulse-mainloop-glib0
+          sha256sum *.deb > SHA256SUMS
+      - name: Upload PulseAudio packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulseaudio-ubuntu24-x86_64
+          path: .work/pulse-debs
+          if-no-files-found: error
+          retention-days: 1
