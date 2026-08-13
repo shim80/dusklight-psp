@@ -20,6 +20,7 @@ add_executable(dusklight_psp
     "${DUSK_PSP_ROOT}/src/canonical_assets.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_common_loader.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_room_loader.cpp"
+    "${DUSK_PSP_ROOT}/src/canonical_startup_loader.cpp"
 
     "${DUSK_PSP_ROOT}/src/playable_package.cpp"
     "${DUSK_PSP_ROOT}/src/playable_runtime.cpp"

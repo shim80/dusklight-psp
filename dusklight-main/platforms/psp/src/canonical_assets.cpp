@@ -11,6 +11,17 @@ constexpr CanonicalCommonAssets kCommonAssets = {
     "data/common/link.dpan",
     "data/common/hud.dpui",
 };
+constexpr CanonicalStartupAssets kStartupAssets = {
+    "data/startup/startup.dpst",
+    "data/startup/startup_logos.dpsu",
+    "data/startup/title_ui.dpsu",
+    "data/startup/file_select.dpsu",
+    "data/startup/title_room.dprm",
+    "data/startup/title_room.dptx",
+    "data/startup/title_logo.dprm",
+    "data/startup/title_logo.dptx",
+    "data/startup/title_logo.dpan",
+};
 constexpr char kFsp108[] = "F_SP108";
 constexpr CanonicalRoomAssets kFsp108R01Assets = {
     "data/stages/F_SP108/R01/room.dprm",
@@ -36,6 +47,15 @@ CanonicalAssetError resolve_canonical_common_assets(
         return CanonicalAssetError::NullOutput;
     }
     *output = kCommonAssets;
+    return CanonicalAssetError::Ok;
+}
+
+CanonicalAssetError resolve_canonical_startup_assets(
+    CanonicalStartupAssets* output) {
+    if (output == nullptr) {
+        return CanonicalAssetError::NullOutput;
+    }
+    *output = kStartupAssets;
     return CanonicalAssetError::Ok;
 }
 

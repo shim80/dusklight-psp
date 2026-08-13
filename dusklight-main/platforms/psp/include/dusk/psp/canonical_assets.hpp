@@ -12,6 +12,18 @@ struct CanonicalCommonAssets {
     const char* hud_ui;
 };
 
+struct CanonicalStartupAssets {
+    const char* sequence;
+    const char* logos_ui;
+    const char* title_ui;
+    const char* file_select_ui;
+    const char* title_room_model;
+    const char* title_room_textures;
+    const char* title_logo_model;
+    const char* title_logo_textures;
+    const char* title_logo_animation;
+};
+
 struct CanonicalRoomAssets {
     const char* model;
     const char* textures;
@@ -30,6 +42,8 @@ enum class CanonicalAssetError {
 
 CanonicalAssetError resolve_canonical_common_assets(
     CanonicalCommonAssets* output);
+CanonicalAssetError resolve_canonical_startup_assets(
+    CanonicalStartupAssets* output);
 CanonicalAssetError resolve_canonical_room_assets(
     const save::StartContext& start,
     CanonicalRoomAssets* output);
