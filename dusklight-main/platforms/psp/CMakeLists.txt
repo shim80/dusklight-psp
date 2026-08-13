@@ -100,8 +100,11 @@ dusk_psp_library(dusk_psp_stage
     "${DUSK_PSP_ROOT}/src/source_message_bmg.cpp"
     "${DUSK_PSP_ROOT}/src/interaction_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/item_runtime.cpp"
+    "${DUSK_PSP_ROOT}/src/save_runtime.cpp"
+    "${DUSK_PSP_ROOT}/src/save_storage.cpp"
     "${DUSK_PSP_ROOT}/src/stage_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/startup_runtime.cpp"
+    "${DUSK_PSP_ROOT}/src/startup_save_flow.cpp"
     "${DUSK_PSP_ROOT}/src/switch_runtime.cpp"
 )
 target_link_libraries(dusk_psp_stage PUBLIC dusk_psp_resources)

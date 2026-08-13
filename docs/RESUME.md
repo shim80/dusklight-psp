@@ -9,147 +9,143 @@ Read, in order:
 1. `/AGENTS.md`
 2. `/docs/STATUS.md`
 3. `/docs/COMMIT_LEDGER.md`
-4. the newest reports in `/docs/reports/`, including `201-psp-import-stub-order.md`
-5. `/test/chest-source-full/main.cpp`
-6. `/test/canonical-runtime-demo-item/demo_item_commit_host_test.cpp`
-7. `/test/getawait-heart-probe/main.cpp`
-8. the PSP runtime functions referenced by those harnesses, especially `apply_source_animation_resource_and_skin()`.
+4. the newest reports in `/docs/reports/`
+5. `/dusklight-main/platforms/psp/include/dusk/psp/startup_save_flow.hpp`
+6. `/dusklight-main/platforms/psp/src/startup_save_flow.cpp`
+7. `/dusklight-main/platforms/psp/include/dusk/psp/psp_controls.hpp`
+8. `/dusklight-main/platforms/psp/include/dusk/psp/first_playable_controls.hpp`
+9. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp`
+10. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_room_loader.hpp`
+11. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_common_loader.hpp`
+12. `/dusklight-main/platforms/psp/src/canonical_game.cpp`
+13. `/dusklight-main/platforms/psp/src/playable_render.cpp`
+14. `/test/canonical-runtime/startup_first_playable_host_test.cpp`
+15. `/test/startup-save-integration-host/main.cpp`
+16. `/test/psp-controls-host/main.cpp`
+17. `/test/first-playable-controls-host/main.cpp`
+18. `/test/dusklight-psp/CMakeLists.txt`
+19. `/test/dusklight-psp/README.md`
+20. `/scripts/validate-canonical-first-playable-assets.sh`
+21. `/scripts/run-canonical-first-playable.sh`
+22. `/test/getawait-heart-probe/main.cpp`
 
 Do not infer that a historical report's Git SHA exists in the reconstructed repository. The historical ledger distinguishes provenance from reconstructed commits.
 
-The current link-order work is stacked on `agent/source-demo-item-commit`. Keep that dependency explicit until the gameplay PR is integrated.
+## 2. Asset safety
 
-## 2. Required local dependencies
+Bring your own legally obtained Twilight Princess game image when original assets must be regenerated. Never commit extracted or derived commercial game packages.
 
-Bring your own legally obtained Twilight Princess game image when original assets must be regenerated. Never commit it.
+An authorized workspace asset bundle was successfully located on 2026-08-13 and used locally for the first-playable proof. It contains the canonical F_SP108/Link/HUD packages and packaged startup assets. The assets themselves were not uploaded to GitHub.
 
-Install/configure PSPSDK/pspdev and PPSSPP. Set:
+## 3. Latest public checkpoint
 
-```sh
-export PSPDEV=/path/to/pspdev
-export PSPSDK="$PSPDEV/psp/sdk"
-export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
-```
+Latest fully green canonical public proof: GitHub Actions run `31679685111`, commit `3318caf88e8ec2cdf84cebc54408dac5fc01cdea`.
 
-## 3. Build sanity
+Canonical EBOOT SHA-256: `9fce67ba95f3ff6c3be7ce674be324711ff03e17f1986b4a7993fe8f4129d5a2`.
 
-Start with the asset-independent source-owned acquisition regression:
+Artifact ID: `9172983520`.
 
-```sh
-cmake -S test/canonical-runtime-demo-item \
-  -B build/host/canonical-runtime-demo-item \
-  -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/host/canonical-runtime-demo-item \
-  --target demo_item_commit_host_test -j 4
-./build/host/canonical-runtime-demo-item/demo_item_commit_host_test
-```
+The run proves host save/startup/control semantics, first-playable control tracker semantics, canonical asset preflight, Allegrex compile/link, `mips:allegrex` ELF identity, PPSSPP boot and public fail-closed behavior without proprietary assets.
 
-Expected marker:
+## 4. Asset-backed proof now achieved
 
-```text
-DEMO_ITEM_COMMIT_HOST_OK item=0x21 source_owned=true commit_frames=2 acquisitions=1 duplicate_commits=0
-```
+Using the exact run-82 EBOOT with pinned PPSSPP 1.20.4 (AppImage SHA-256 `661c098e6b7f7610171a57b7c533ce8bba6f2312b71e76d61e850461973eba21`), the local asset-backed route now reaches visible F_SP108 gameplay.
 
-Then configure and build the integrated PSP chest target:
+Observed route:
 
-```sh
-psp-cmake -S test/chest-source-full \
-  -B build/psp/chest-source-full \
-  -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build/psp/chest-source-full -j 4 --verbose \
-  2>&1 | tee build/psp/chest-source-full/build.log
-```
+`file select -> slot creation/persist -> NewGameTransition -> F_SP108/R01/start21 -> room/actor/Link initialization -> PSP gameplay renderer`
 
-The build is invalid if the log contains:
+A real PPSSPP framebuffer shows Link inside F_SP108 and is committed at:
 
-```text
-Warning: could not fixup imports, stubs out of order.
-```
+`screenshot/dusklight-psp-f-sp108-gameplay.jpg`
 
-The required final link invariant is: all Dusklight archives first inside one
-`--start-group/--end-group`, followed by the PSP GU/system libraries. Do not
-reintroduce `dusk_psp_runtime` beside direct SDK libraries on this executable;
-CMake would place the INTERFACE target's transitive archives after those stubs.
+Analog input was exercised after the first visible frame and produced an observable Link orientation/locomotion change. This is actual asset-backed gameplay, not the synthetic startup probe.
 
-The preserved standalone visual probe can still be built with:
+The first local run exposed an old/new HUD-package contract mismatch. The preserved workspace `hud.dpui` is a valid compact DPUI v2 with original gameplay/pause sprites but without the later complete printable-ASCII glyph set. Commit `3318caf88e8ec2cdf84cebc54408dac5fc01cdea` adds a canonical-only validator that still checks package CRC/size/ranges/atlas and requires sprite IDs `0–3`, `10–20`, `30`, `40–43`; the general `validate_dpui()` remains strict.
 
-```sh
-psp-cmake -S test/getawait-heart-probe \
-  -B build/psp/getawait-heart-probe \
-  -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build/psp/getawait-heart-probe -j 4
-```
+The PSP runtime marker remains:
 
-## 4. Public-CI boot boundary
+`DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK stage=F_SP108 room=1 start=21 actors=9 render=opaque_unlit frame=1`
 
-GitHub Actions run `31633775215` produced an EBOOT with SHA-256
-`ca162d1d48f8b595bd15d4b845ff2c97e6524759b14ac90e9d779826a9e45a18` and booted it in PPSSPP.
+In the current local headless PPSSPP setup, the PSP platform `log()` stream is not mirrored into the host PPSSPP stdout. Do not invent a marker observation; the accepted proof is the actual framebuffer after all fail-closed initialization gates passed.
 
-Because proprietary-derived assets are absent in public CI, the expected smoke-test marker is:
+## 5. Startup/save/control semantics that must not regress
+
+- exactly three save slots;
+- up/down clamp and do not wrap;
+- Cross or START confirms on PSP;
+- empty slot creates `F_SP108`, room 1, start 21, layer 0 and persists before handoff;
+- occupied slot restores exact persisted `stage/room/start/layer` and metadata;
+- persistence is `DPSV` v1 + CRC32 and fails closed;
+- analog movement has a centered deadzone and normalized output;
+- Cross=action, L/R=camera, Triangle/Square=zoom, START=pause, Circle=cancel, D-pad=menu, SELECT=debug;
+- one-shot controls are edge-triggered.
+
+The first-playable control tracker counts effects, not raw input: movement requires displacement, camera requires runtime manual-camera state, action requires the source-prompt action counter to increment, and pause/resume require actual `Playing <-> Paused` transitions.
+
+Full asset-backed control acceptance is not closed yet. Analog locomotion is visually proven; camera/action/pause/resume still need deterministic acceptance in actual F_SP108.
+
+## 6. Canonical first-playable asset contract
+
+At this checkpoint the gameplay handoff accepts exactly `F_SP108 / room 1 / start 21 / layer 0`.
+
+Room packages:
 
 ```text
-CHEST_SOURCE_FULL.FAIL
-code=10
+data/stages/F_SP108/R01/room.dprm
+data/stages/F_SP108/R01/room.dptx
+data/stages/F_SP108/R01/room.dpcl
+data/stages/F_SP108/R01/room.dpsc
 ```
 
-That marker proves PSP initialization and import resolution reached the first asset-loading check. It is not gameplay completion evidence. PPSSPP v1.20.4 initializes SDL audio before loading the EBOOT, so a headless runner must provide a working host audio device; the workflow uses a local PulseAudio null sink.
+Global playable packages:
 
-## 5. Asset contract for GETAWAIT Heart Piece proof
+```text
+data/common/link.dpsk
+data/common/link.dptx
+data/common/link.dpan
+data/common/hud.dpui
+```
 
-The harness expects local, untracked derived packages next to its EBOOT/memstick setup:
+The workspace also contains packaged startup data, including `data/startup/startup.dpst`, `title_ui.dpsu`, `file_select.dpsu`, startup logos and title model/texture/animation packages. These should be used next to replace the synthetic/public startup presentation.
 
-- Link DPSK/DPTX;
-- DPAN containing `GETAWAIT` resource `0x16A` (and, for full integration, `GETA` `0x169` and BOXOP);
-- R02 DPRM/DPTX/DPSC;
-- Heart Piece DPRM/DPTX derived from `O_gD_hutk/o_gd_hutk.bmd`;
-- HUD DPUI.
+## 7. Rendering profile
 
-Known source identities:
+Keep the first-playable renderer deliberately conservative while gameplay is incomplete:
 
-- `AlAnm.arc` / GETA resource `0x169`, 30 frames, 35 joints;
-- `AlAnm.arc` / GETAWAIT resource `0x16A`, 30 frames, 35 joints;
-- `O_gD_hutk.arc` / BMD resource `0x0008`, `o_gd_hutk.bmd`;
-- Heart Piece item number `0x21`;
-- TBOX name hash in the preserved R02 package: `0x2A0E83C6`.
+- `presentation::Profile::OpaqueOnly`;
+- `RenderProfile::KnownGoodUnlit`;
+- lighting off;
+- fog off;
+- shadows off.
 
-Do not commit these extracted commercial files.
+Do not spend the next checkpoint on graphical polish.
 
-## 6. What the probes proved
+## 8. Immediate next work
 
-The renderer can submit additional static models; do not reopen that as the default hypothesis. The successful GETAWAIT proof required the real Link item-get pose and source-derived Demo_Item placement. Use that evidence to integrate the event; do not replace GETAWAIT with Idle or move the Heart Piece by eye.
+1. finish deterministic asset-backed control acceptance in F_SP108 for camera, source-prompt Cross action, START pause and resume;
+2. keep the proven room+Link framebuffer path intact;
+3. wire the packaged source-faithful startup assets into the canonical driver instead of the synthetic fixture;
+4. replay `intro/opening -> title -> file select -> save -> F_SP108` in one EBOOT;
+5. add only real source-faithful UI/gameplay screenshots to `screenshot/`;
+6. then evaluate the startup branch for merge/release readiness.
 
-The host regression additionally proves the source-owned commit boundary without game assets: acknowledgement only sets `dead()`, the following normal source process frame executes `execItemGet()`, and a second frame does not duplicate the acquisition.
+## 9. Heart Piece / chest track
 
-## 7. Next implementation target
+PR #2 (`Make Demo_Item commit source-owned`) remains draft/unmerged. It may only be promoted after one asset-backed PPSSPP run proves the complete chest lifecycle after the source-owned commit: chest visible/closed, OPEN, BOXOP/GETA/GETAWAIT, Heart Piece visibility, inventory unchanged before acknowledgement, `dead()` followed by exactly one source `execItemGet()`, persistence/recreation and clean Link locomotion, with marker and real screenshot.
 
-Run the integrated source-event treasure target with legal local assets and validate the complete sequence. Event ownership must advance the Link cuts and Demo_Item lifecycle.
+PR #4 (`Fix PSP import stub ordering`) was independently validated and merged into `agent/source-demo-item-commit` as `76e3dbedb56970283bfcee4225bf41cd4106836d`.
 
-Critical semantics:
+PR #5 (`Add BRK runtime plumbing for source item effects`) remains draft. Its compile/smoke proof is green, but it still lacks a dedicated functional BRK gate and asset-backed Heart Piece BRK/TEV rendering proof.
 
-- item creation is not acquisition;
-- item is hidden on creation;
-- Link's GETA/GETAWAIT controls presentation;
-- item becomes visible late in GETA;
-- message acknowledgement controls the end of item presentation;
-- `dead()` precedes `execItemGet()`/commit;
-- treasure state persists after actor/room recreation;
-- return to ordinary locomotion must clear event animation/root history.
+## 10. Release gate
 
-After the integrated gameplay checkpoint is closed, return to the separate Heart Piece BCK/BRK/TEV presentation issue. Do not fake those channels with an arbitrary color pulse or timer.
+Do not publish the first public EBOOT release until all are ready together:
 
-## 8. Definition of done for the next gameplay checkpoint
+- intro cinematic/startup route;
+- main/title menu;
+- persistent save creation/loading;
+- beginning of the game in F_SP108;
+- PSP-adapted controls sufficient for user testing.
 
-All must be true in one PPSSPP run:
-
-- original chest is visible closed;
-- OPEN interaction starts the source treasure event;
-- Link uses source BOXOP/GETA/GETAWAIT;
-- Heart Piece is visible above/around Link in real gameplay;
-- inventory remains unchanged while the Demo_Item is merely visible;
-- message acknowledgement kills the Demo_Item and commits exactly once;
-- chest stays open after recreation;
-- Link returns to a clean locomotion pose;
-- marker file states success;
-- screenshot is a real gameplay frame, not text/diagnostics.
-
-Then add a report, update `STATUS.md`, and commit.
+Rendering polish remains secondary until gameplay completion.

@@ -31,7 +31,9 @@ For meaningful changes:
 - compile for Allegrex;
 - execute a real EBOOT in PPSSPP when the change reaches PSP runtime behavior;
 - use marker files/metrics for deterministic checks;
-- use screenshots only for visible gameplay advances, never text-only diagnostic screens;
+- use screenshots only for source-faithful game UI or visible asset-backed gameplay advances;
+- never publish or commit text-only diagnostics, synthetic/public probes, boot screens or technical framebuffer captures under `screenshot/`;
+- keep diagnostic captures in CI artifacts/logs only and never present them as product screenshots;
 - keep visual proof separate from logical proof;
 - for stateful features, destroy/recreate/re-enter and verify persistence.
 
