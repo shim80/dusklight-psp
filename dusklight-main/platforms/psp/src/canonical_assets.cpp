@@ -5,6 +5,12 @@
 namespace dusk::psp::game {
 namespace {
 
+constexpr CanonicalCommonAssets kCommonAssets = {
+    "data/common/link.dpsk",
+    "data/common/link.dptx",
+    "data/common/link.dpan",
+    "data/common/hud.dpui",
+};
 constexpr char kFsp108[] = "F_SP108";
 constexpr CanonicalRoomAssets kFsp108R01Assets = {
     "data/stages/F_SP108/R01/room.dprm",
@@ -23,6 +29,15 @@ bool stage_equals(const save::StartContext& start, const char* expected) {
 }
 
 }  // namespace
+
+CanonicalAssetError resolve_canonical_common_assets(
+    CanonicalCommonAssets* output) {
+    if (output == nullptr) {
+        return CanonicalAssetError::NullOutput;
+    }
+    *output = kCommonAssets;
+    return CanonicalAssetError::Ok;
+}
 
 CanonicalAssetError resolve_canonical_room_assets(
     const save::StartContext& start,
