@@ -40,6 +40,10 @@ jobs:
           cmake --build .work/build/psp-controls-host -j 4
           ./.work/build/psp-controls-host/psp_controls_host_test | tee .work/psp-controls-host.log
           grep -F 'PSP_CONTROLS_HOST_OK' .work/psp-controls-host.log
+          cmake -S test/first-playable-controls-host -B .work/build/first-playable-controls-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/first-playable-controls-host -j 4
+          ./.work/build/first-playable-controls-host/first_playable_controls_host_test | tee .work/first-playable-controls-host.log
+          grep -F 'FIRST_PLAYABLE_CONTROLS_HOST_OK movement=displacement camera=manual_runtime action=source_prompt pause=enter_resume fail_closed=1' .work/first-playable-controls-host.log
 
           asset_root="$GITHUB_WORKSPACE/.work/first-playable-assets/data"
           mkdir -p "$asset_root/common" "$asset_root/stages/F_SP108/R01"
@@ -110,6 +114,10 @@ jobs:
             echo 'public CI emitted asset-backed first-playable proof without local game assets' >&2
             exit 1
           fi
+          if grep -Fq 'DUSKLIGHT_PSP_FIRST_PLAYABLE_CONTROLS_OK' .work/ppsspp.log; then
+            echo 'public CI emitted asset-backed controls proof without local game assets' >&2
+            exit 1
+          fi
           printf 'DUSKLIGHT_PSP_PUBLIC_BOOT_NO_ASSET_PROOF_OK\n'
           import -window root .work/dusklight-psp-canonical-diagnostic.png || exit 1
           test "$(stat -c %s .work/dusklight-psp-canonical-diagnostic.png)" -gt 1000 || exit 1
@@ -136,6 +144,7 @@ jobs:
             .work/startup-save-integration-host.log
             .work/canonical-assets-host.log
             .work/psp-controls-host.log
+            .work/first-playable-controls-host.log
             .work/first-playable-assets.log
             .work/dusklight-psp-canonical-diagnostic.png
             .work/ppsspp.log
