@@ -9,11 +9,15 @@ Read, in order:
 1. `/AGENTS.md`
 2. `/docs/STATUS.md`
 3. `/docs/COMMIT_LEDGER.md`
-4. the newest reports in `/docs/reports/`
-5. `/test/getawait-heart-probe/main.cpp`
-6. the PSP runtime functions referenced by that probe, especially `apply_source_animation_resource_and_skin()`.
+4. the newest reports in `/docs/reports/`, including `201-psp-import-stub-order.md`
+5. `/test/chest-source-full/main.cpp`
+6. `/test/canonical-runtime-demo-item/demo_item_commit_host_test.cpp`
+7. `/test/getawait-heart-probe/main.cpp`
+8. the PSP runtime functions referenced by those harnesses, especially `apply_source_animation_resource_and_skin()`.
 
 Do not infer that a historical report's Git SHA exists in the reconstructed repository. The historical ledger distinguishes provenance from reconstructed commits.
+
+The current link-order work is stacked on `agent/source-demo-item-commit`. Keep that dependency explicit until the gameplay PR is integrated.
 
 ## 2. Required local dependencies
 
@@ -29,9 +33,45 @@ export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
 
 ## 3. Build sanity
 
-Start with host/canonical tests that cover the code you are changing, then configure/build the PSP probe or gameplay target.
+Start with the asset-independent source-owned acquisition regression:
 
-Current probe build:
+```sh
+cmake -S test/canonical-runtime-demo-item \
+  -B build/host/canonical-runtime-demo-item \
+  -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/host/canonical-runtime-demo-item \
+  --target demo_item_commit_host_test -j 4
+./build/host/canonical-runtime-demo-item/demo_item_commit_host_test
+```
+
+Expected marker:
+
+```text
+DEMO_ITEM_COMMIT_HOST_OK item=0x21 source_owned=true commit_frames=2 acquisitions=1 duplicate_commits=0
+```
+
+Then configure and build the integrated PSP chest target:
+
+```sh
+psp-cmake -S test/chest-source-full \
+  -B build/psp/chest-source-full \
+  -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build/psp/chest-source-full -j 4 --verbose \
+  2>&1 | tee build/psp/chest-source-full/build.log
+```
+
+The build is invalid if the log contains:
+
+```text
+Warning: could not fixup imports, stubs out of order.
+```
+
+The required final link invariant is: all Dusklight archives first inside one
+`--start-group/--end-group`, followed by the PSP GU/system libraries. Do not
+reintroduce `dusk_psp_runtime` beside direct SDK libraries on this executable;
+CMake would place the INTERFACE target's transitive archives after those stubs.
+
+The preserved standalone visual probe can still be built with:
 
 ```sh
 psp-cmake -S test/getawait-heart-probe \
@@ -40,7 +80,21 @@ psp-cmake -S test/getawait-heart-probe \
 cmake --build build/psp/getawait-heart-probe -j 4
 ```
 
-## 4. Asset contract for GETAWAIT Heart Piece proof
+## 4. Public-CI boot boundary
+
+GitHub Actions run `31633775215` produced an EBOOT with SHA-256
+`ca162d1d48f8b595bd15d4b845ff2c97e6524759b14ac90e9d779826a9e45a18` and booted it in PPSSPP.
+
+Because proprietary-derived assets are absent in public CI, the expected smoke-test marker is:
+
+```text
+CHEST_SOURCE_FULL.FAIL
+code=10
+```
+
+That marker proves PSP initialization and import resolution reached the first asset-loading check. It is not gameplay completion evidence. PPSSPP v1.20.4 initializes SDL audio before loading the EBOOT, so a headless runner must provide a working host audio device; the workflow uses a local PulseAudio null sink.
+
+## 5. Asset contract for GETAWAIT Heart Piece proof
 
 The harness expects local, untracked derived packages next to its EBOOT/memstick setup:
 
@@ -60,13 +114,15 @@ Known source identities:
 
 Do not commit these extracted commercial files.
 
-## 5. What the probe proved
+## 6. What the probes proved
 
 The renderer can submit additional static models; do not reopen that as the default hypothesis. The successful GETAWAIT proof required the real Link item-get pose and source-derived Demo_Item placement. Use that evidence to integrate the event; do not replace GETAWAIT with Idle or move the Heart Piece by eye.
 
-## 6. Next implementation target
+The host regression additionally proves the source-owned commit boundary without game assets: acknowledgement only sets `dead()`, the following normal source process frame executes `execItemGet()`, and a second frame does not duplicate the acquisition.
 
-Restore/complete the source-event treasure runtime so that the harness no longer chooses an item presentation frame manually. Event ownership should advance the Link cuts and Demo_Item lifecycle.
+## 7. Next implementation target
+
+Run the integrated source-event treasure target with legal local assets and validate the complete sequence. Event ownership must advance the Link cuts and Demo_Item lifecycle.
 
 Critical semantics:
 
@@ -79,7 +135,9 @@ Critical semantics:
 - treasure state persists after actor/room recreation;
 - return to ordinary locomotion must clear event animation/root history.
 
-## 7. Definition of done for the next checkpoint
+After the integrated gameplay checkpoint is closed, return to the separate Heart Piece BCK/BRK/TEV presentation issue. Do not fake those channels with an arbitrary color pulse or timer.
+
+## 8. Definition of done for the next gameplay checkpoint
 
 All must be true in one PPSSPP run:
 

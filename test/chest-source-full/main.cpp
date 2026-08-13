@@ -1,3 +1,4 @@
+#include "d/actor/d_a_demo_item.h"
 #include "d/actor/d_a_player.h"
 #include "d/actor/d_a_tbox.h"
 #include "dusk/psp/event_runtime.hpp"
@@ -357,6 +358,7 @@ int main() {
 
     float link_frame=0.0f;
     bool geta_phase=false,getawait_phase=false,message_ack=false;
+    bool item_commit_pending=false,item_commit_first_frame=false,item_commit_verified=false;
     bool opening_marker=false,item_marker=false,message_marker=false;
     std::uint32_t getawait_frames=0,final_pause_frames=0,message_ready_hold=0;
     std::uint32_t partner=fpcM_ERROR_PROCESS_ID_e;
@@ -450,9 +452,14 @@ int main() {
             const bool action_pressed=ready && message_ready_hold>=45u;
             if(!g_message_runtime.tick(action_pressed)) return fail(302);
             if(g_message_runtime.acknowledged() && !message_ack) {
-                if(!compat::original_tbox_demo_item_kill_and_commit(partner) ||
-                   g_items.quantity(kHeart)!=1 || !g_script.cut_end(link_staff)) return fail(30);
+                auto* item=static_cast<daDitem_c*>(g_processes.search_by_id(partner));
+                if(item==nullptr || item->chkDead() || g_items.quantity(kHeart)!=0) return fail(30);
+                // Source ownership: acknowledgement only marks Demo_Item dead.
+                // Its normal execute() must observe chkDead(), run actionEvent(),
+                // and call execItemGet() on the following process frame.
+                item->dead();
                 message_ack=true;
+                item_commit_pending=true;
                 heart_visible=false;
             }
         }
@@ -526,8 +533,24 @@ int main() {
         } else return fail(43);
 
         // Original chest actor consumes TREASURE cut and synchronizes its BCK
-        // to Link's source animation frame through getBaseAnimeFrame().
+        // to Link's source animation frame through getBaseAnimeFrame(). Demo_Item
+        // commits inventory from this same normal process pass after dead().
         if(!g_processes.execute_all()) return fail(44);
+        if(item_commit_pending) {
+            auto* item=static_cast<daDitem_c*>(g_processes.search_by_id(partner));
+            if(item==nullptr || !item->chkDead() ||
+               item->mAction!=daDitem_c::ACTION_WAIT_LIGHT_END_e ||
+               g_items.quantity(kHeart)!=1) return fail(46);
+            item_commit_pending=false;
+            item_commit_first_frame=true;
+        } else if(item_commit_first_frame) {
+            // Run one additional normal process frame before ending Link's cut.
+            // Quantity must stay at one, proving actionEvent()/execItemGet() did
+            // not re-enter after switching to ACTION_WAIT_LIGHT_END_e.
+            if(g_items.quantity(kHeart)!=1 || !g_script.cut_end(link_staff)) return fail(47);
+            item_commit_first_frame=false;
+            item_commit_verified=true;
+        }
 
         p::MessageOverlayRenderInput overlay = {};
         const p::MessageOverlayRenderInput* overlay_ptr = nullptr;
@@ -548,7 +571,8 @@ int main() {
         dusk::psp::sleep_microseconds(33333);
     }
 
-    if(!g_script.completed() || !message_ack || !opening_marker || !item_marker || !message_marker ||
+    if(!g_script.completed() || !message_ack || !item_commit_verified ||
+       !opening_marker || !item_marker || !message_marker ||
        g_items.quantity(kHeart)!=1 || !g_items.is_treasure_open(19)) return fail(50);
 
     // Let the original chest observe endCheck(), reset the event, and settle.
@@ -558,7 +582,7 @@ int main() {
             link::s16_to_radians(static_cast<std::uint16_t>(player->shape_angle.y)),
             view,false,item_pos,0.0f)) return fail(53);
     if(!write_marker("CHEST_COMPLETE.OK",
-        "DUSKLIGHT_PSP_CHEST_SOURCE_FULL_OK item=0x21 treasure=19 deferred_commit=1 source_message=0x86 input_gated=1\n")) return fail(54);
+        "DUSKLIGHT_PSP_CHEST_SOURCE_FULL_OK item=0x21 treasure=19 source_owned_commit=1 commit_frames=2 source_message=0x86 input_gated=1\n")) return fail(54);
 
     // Persistence: recreate both source TBoxes from the same DPSC and verify
     // Heart Piece chest remains opened without creating/committing a second item.
