@@ -30,7 +30,8 @@ printf '%s\n' \
   "eboot_sha256=$(sha256_file "$EBOOT")" \
   'controls=UP/DOWN file, X/START confirm, analog move, L/R camera, X action, START pause' \
   'expected_route=file select -> NewGameTransition -> F_SP108/R01/start21 -> visible room+Link' \
-  'proof_rule=only an asset-backed gameplay framebuffer counts as visible first-playable proof'
+  'expected_runtime_marker=DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK stage=F_SP108 room=1 start=21 actors=9 render=opaque_unlit frame=1' \
+  'proof_rule=the runtime marker plus an asset-backed gameplay framebuffer are required for visible first-playable proof'
 
 cd "$GAME_DIR"
 exec "$PPSSPP" EBOOT.PBP
