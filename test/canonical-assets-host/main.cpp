@@ -19,12 +19,32 @@ bool expect(bool condition, const char* message) {
 }  // namespace
 
 int main() {
+    game::CanonicalCommonAssets common = {};
+    if (!expect(
+            game::resolve_canonical_common_assets(&common) ==
+                game::CanonicalAssetError::Ok,
+            "resolve_common") ||
+        !expect(std::strcmp(common.link_model, "data/common/link.dpsk") == 0,
+                "link_model_path") ||
+        !expect(std::strcmp(common.link_textures, "data/common/link.dptx") == 0,
+                "link_texture_path") ||
+        !expect(std::strcmp(common.link_animations, "data/common/link.dpan") == 0,
+                "link_animation_path") ||
+        !expect(std::strcmp(common.hud_ui, "data/common/hud.dpui") == 0,
+                "hud_path") ||
+        !expect(
+            game::resolve_canonical_common_assets(nullptr) ==
+                game::CanonicalAssetError::NullOutput,
+            "common_null_output")) {
+        return 1;
+    }
+
     const save::StartContext start = save::default_new_game_start();
     if (!expect(std::strcmp(start.stage.data(), "F_SP108") == 0, "stage") ||
         !expect(start.room == 1, "room") ||
         !expect(start.start_point == 21, "start_point") ||
         !expect(start.layer == 0, "layer")) {
-        return 1;
+        return 2;
     }
 
     game::CanonicalRoomAssets assets = {};
@@ -44,7 +64,7 @@ int main() {
         !expect(
             std::strcmp(assets.scene, "data/stages/F_SP108/R01/room.dpsc") == 0,
             "scene_path")) {
-        return 2;
+        return 3;
     }
 
     save::StartContext unsupported = start;
@@ -53,7 +73,7 @@ int main() {
             game::resolve_canonical_room_assets(unsupported, &assets) ==
                 game::CanonicalAssetError::UnsupportedRoom,
             "unsupported_room")) {
-        return 3;
+        return 4;
     }
     unsupported = start;
     unsupported.start_point = 20;
@@ -61,7 +81,7 @@ int main() {
             game::resolve_canonical_room_assets(unsupported, &assets) ==
                 game::CanonicalAssetError::UnsupportedStartPoint,
             "unsupported_start")) {
-        return 4;
+        return 5;
     }
     unsupported = start;
     unsupported.layer = 1;
@@ -69,7 +89,7 @@ int main() {
             game::resolve_canonical_room_assets(unsupported, &assets) ==
                 game::CanonicalAssetError::UnsupportedLayer,
             "unsupported_layer")) {
-        return 5;
+        return 6;
     }
     unsupported = start;
     std::memcpy(unsupported.stage.data(), "D_MN05A", 8);
@@ -81,7 +101,7 @@ int main() {
             game::resolve_canonical_room_assets(start, nullptr) ==
                 game::CanonicalAssetError::NullOutput,
             "null_output")) {
-        return 6;
+        return 7;
     }
 
     std::puts(
