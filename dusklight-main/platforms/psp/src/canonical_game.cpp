@@ -2,8 +2,11 @@
 
 #include "dusk/psp/actor_runtime.hpp"
 #include "dusk/psp/canonical_assets.hpp"
+#include "dusk/psp/canonical_common_loader.hpp"
 #include "dusk/psp/canonical_room_loader.hpp"
 #include "dusk/psp/platform.hpp"
+#include "dusk/psp/playable_render.hpp"
+#include "dusk/psp/playable_runtime.hpp"
 #include "dusk/psp/psp_controls.hpp"
 #include "dusk/psp/real_room_runtime.hpp"
 #include "dusk/psp/room_package.hpp"
@@ -34,6 +37,8 @@ constexpr std::uint32_t kStartupCapabilities =
 constexpr std::uint32_t kExpectedSourceActors = 599;
 constexpr std::uint32_t kExpectedEssentialActors = 9;
 constexpr std::uint32_t kFrameDelayMicroseconds = 33333;
+constexpr std::uint32_t kCommandListBytes = 256 * 1024;
+alignas(16) std::uint8_t g_command_list[kCommandListBytes] = {};
 
 void write_u16(std::uint8_t* output, std::uint16_t value) {
     output[0] = static_cast<std::uint8_t>(value);
@@ -157,38 +162,11 @@ void draw_file_select(
     pspDebugScreenPrintf("Startup presentation is synthetic/public in this build");
 }
 
-void draw_gameplay(
-    const room::RealRoomRuntime& runtime,
-    const actor::ActorSystem& actors) {
-    pspDebugScreenSetBackColor(0x00000000);
-    pspDebugScreenSetTextColor(0x00FFFFFF);
-    pspDebugScreenClear();
-    pspDebugScreenSetXY(4, 2);
-    pspDebugScreenPrintf("DUSKLIGHT PSP - ASSET-BACKED ROOM ACTIVE");
-    pspDebugScreenSetXY(4, 5);
-    pspDebugScreenPrintf("F_SP108  ROOM 01  START 21");
-    pspDebugScreenSetXY(4, 8);
-    pspDebugScreenPrintf(
-        "POS X:%d Y:%d Z:%d",
-        static_cast<int>(runtime.state.position.x),
-        static_cast<int>(runtime.state.position.y),
-        static_cast<int>(runtime.state.position.z));
-    pspDebugScreenSetXY(4, 10);
-    pspDebugScreenPrintf(
-        "UPDATES:%u  ACTORS:%u  SOURCE ESSENTIAL:%u",
-        static_cast<unsigned>(runtime.state.updates),
-        static_cast<unsigned>(actors.active_count),
-        static_cast<unsigned>(actors.essential_source_actor_count));
-    pspDebugScreenSetXY(4, 13);
-    pspDebugScreenPrintf("STICK MOVE  L/R CAMERA  X ACTION  START PAUSE");
-    pspDebugScreenSetXY(4, 15);
-    pspDebugScreenPrintf("Rendering remains intentionally minimal/unlit");
-}
-
 void draw_room_error(
     const save::StartContext& start,
     const char* category,
     const char* detail) {
+    pspDebugScreenInit();
     pspDebugScreenSetBackColor(0x00000000);
     pspDebugScreenSetTextColor(0x00FFFFFF);
     pspDebugScreenClear();
@@ -208,65 +186,144 @@ void draw_room_error(
     pspDebugScreenPrintf("No gameplay parity is claimed from this failure state");
 }
 
+playable::RealRoomRenderInput make_render_input(
+    const room::RealRoomRuntime& runtime,
+    const playable::Runtime& link_runtime) {
+    playable::RealRoomRenderInput output = {};
+    output.link_position = {
+        runtime.state.position.x,
+        runtime.state.position.y,
+        runtime.state.position.z};
+    output.link_yaw = runtime.state.yaw;
+    output.camera_eye = {
+        runtime.state.camera_eye.x,
+        runtime.state.camera_eye.y,
+        runtime.state.camera_eye.z};
+    output.camera_center = {
+        runtime.state.camera_center.x,
+        runtime.state.camera_center.y,
+        runtime.state.camera_center.z};
+    output.camera_fov = 0.0f;
+    for (std::uint32_t index = 0; index < 5; ++index) {
+        output.rubies[index] = {
+            runtime.state.rubies[index].x,
+            runtime.state.rubies[index].y,
+            runtime.state.rubies[index].z};
+        output.ruby_active[index] = runtime.state.ruby_active[index];
+    }
+    output.interaction = {
+        runtime.state.interaction.x,
+        runtime.state.interaction.y,
+        runtime.state.interaction.z};
+    output.presentation = presentation::Profile::OpaqueOnly;
+    output.ui_state.mode =
+        runtime.state.mode == room::LoadState::Paused
+            ? playable::GameMode::Paused
+            : playable::GameMode::Playing;
+    output.ui_state.locomotion = runtime.state.locomotion;
+    output.ui_state.position = output.link_position;
+    output.ui_state.yaw = runtime.state.yaw;
+    output.ui_state.camera_yaw = runtime.state.camera_yaw;
+    output.ui_state.camera_distance = runtime.state.camera_distance;
+    output.ui_state.rupees = runtime.state.rupees;
+    output.ui_state.collected = runtime.state.total_collected;
+    output.ui_state.hearts = 3;
+    output.ui_state.pause_selection = runtime.state.pause_selection;
+    output.ui_state.action_prompt = runtime.state.action_prompt;
+    output.ui_state.debug_visible = runtime.state.debug_visible;
+    output.root_pose = link_runtime.root_pose.metrics;
+    output.environment = nullptr;
+    output.shadows = nullptr;
+    output.render_profile = playable::RenderProfile::KnownGoodUnlit;
+    output.lighting_mode = playable::LightingMode::Off;
+    output.fog_mode = playable::FogMode::Off;
+    output.shadow_mode = playable::ShadowMode::Off;
+    return output;
+}
+
 bool initialize_first_playable(
     const save::StartContext& start,
-    CanonicalRoomPackages* packages,
+    CanonicalRoomPackages* room_packages,
+    CanonicalCommonPackages* common_packages,
     room::RealRoomRuntime* runtime,
     actor::ActorSystem* actors,
+    playable::Runtime* link_runtime,
+    playable::RenderMetrics* render_metrics,
     const char** error_category,
     const char** error_detail) {
-    if (packages == nullptr || runtime == nullptr || actors == nullptr ||
-        error_category == nullptr || error_detail == nullptr) {
+    if (room_packages == nullptr || common_packages == nullptr ||
+        runtime == nullptr || actors == nullptr || link_runtime == nullptr ||
+        render_metrics == nullptr || error_category == nullptr ||
+        error_detail == nullptr) {
         return false;
     }
 
-    CanonicalRoomAssets assets = {};
-    const CanonicalAssetError asset_error =
-        resolve_canonical_room_assets(start, &assets);
-    if (asset_error != CanonicalAssetError::Ok) {
+    CanonicalRoomAssets room_assets = {};
+    CanonicalCommonAssets common_assets = {};
+    const CanonicalAssetError room_asset_error =
+        resolve_canonical_room_assets(start, &room_assets);
+    const CanonicalAssetError common_asset_error =
+        resolve_canonical_common_assets(&common_assets);
+    if (room_asset_error != CanonicalAssetError::Ok ||
+        common_asset_error != CanonicalAssetError::Ok) {
         *error_category = "asset contract";
-        *error_detail = canonical_asset_error_name(asset_error);
+        *error_detail = canonical_asset_error_name(
+            room_asset_error != CanonicalAssetError::Ok
+                ? room_asset_error
+                : common_asset_error);
         return false;
     }
 
-    const CanonicalRoomLoadError load_error =
-        load_canonical_room_packages(assets, packages);
-    if (load_error != CanonicalRoomLoadError::Ok) {
+    const CanonicalRoomLoadError room_load_error =
+        load_canonical_room_packages(room_assets, room_packages);
+    if (room_load_error != CanonicalRoomLoadError::Ok) {
         *error_category = "room packages";
-        *error_detail = canonical_room_load_error_name(load_error);
+        *error_detail = canonical_room_load_error_name(room_load_error);
         return false;
     }
 
-    if (room::read_u32(packages->scene.view.bytes + 136) !=
+    const CanonicalCommonLoadError common_load_error =
+        load_canonical_common_packages(common_assets, common_packages);
+    if (common_load_error != CanonicalCommonLoadError::Ok) {
+        *error_category = "Link/HUD packages";
+        *error_detail = canonical_common_load_error_name(common_load_error);
+        unload_canonical_room_packages(room_packages);
+        return false;
+    }
+
+    if (room::read_u32(room_packages->scene.view.bytes + 136) !=
         kExpectedSourceActors) {
         *error_category = "scene contract";
         *error_detail = "unexpected source actor count";
-        unload_canonical_room_packages(packages);
+        unload_canonical_common_packages(common_packages);
+        unload_canonical_room_packages(room_packages);
         return false;
     }
 
     room::SceneSpawnV3 spawn = {};
     if (room::find_dpsc_spawn_v3(
-            packages->scene.view, start.start_point, &spawn) !=
+            room_packages->scene.view, start.start_point, &spawn) !=
         room::PackageError::Ok) {
         *error_category = "scene contract";
         *error_detail = "start point missing";
-        unload_canonical_room_packages(packages);
+        unload_canonical_common_packages(common_packages);
+        unload_canonical_room_packages(room_packages);
         return false;
     }
 
     if (!room::initialize_real_room_runtime(
-            runtime, packages->model.view, packages->textures.view,
-            packages->collision.view, packages->scene.view) ||
+            runtime, room_packages->model.view, room_packages->textures.view,
+            room_packages->collision.view, room_packages->scene.view) ||
         !room::spawn_real_room(runtime, start.start_point) ||
         !room::real_room_state_consistent(*runtime)) {
         *error_category = "real room runtime";
         *error_detail = "initialization or spawn failed";
-        unload_canonical_room_packages(packages);
+        unload_canonical_common_packages(common_packages);
+        unload_canonical_room_packages(room_packages);
         return false;
     }
 
-    if (actor::initialize_actor_system(actors, packages->scene.view) !=
+    if (actor::initialize_actor_system(actors, room_packages->scene.view) !=
             actor::Error::Ok ||
         actors->essential_source_actor_count != kExpectedEssentialActors ||
         actors->active_count != kExpectedEssentialActors ||
@@ -275,7 +332,34 @@ bool initialize_first_playable(
         *error_category = "actor runtime";
         *error_detail = "first-playable actor contract failed";
         actor::destroy_actor_system(actors);
-        unload_canonical_room_packages(packages);
+        unload_canonical_common_packages(common_packages);
+        unload_canonical_room_packages(room_packages);
+        return false;
+    }
+
+    if (!playable::initialize_runtime(
+            link_runtime,
+            canonical_playable_package_set(*common_packages))) {
+        *error_category = "Link runtime";
+        *error_detail = "animation/skin initialization failed";
+        actor::destroy_actor_system(actors);
+        unload_canonical_common_packages(common_packages);
+        unload_canonical_room_packages(room_packages);
+        return false;
+    }
+
+    if (!playable::initialize_real_room_renderer(
+            common_packages->link_textures.view,
+            room_packages->textures.view,
+            common_packages->hud_ui.view,
+            room_packages->model.bytes,
+            room_packages->model.size,
+            g_command_list, sizeof(g_command_list), render_metrics)) {
+        *error_category = "renderer";
+        *error_detail = "minimal room renderer initialization failed";
+        actor::destroy_actor_system(actors);
+        unload_canonical_common_packages(common_packages);
+        unload_canonical_room_packages(room_packages);
         return false;
     }
 
@@ -318,12 +402,16 @@ int run_canonical_game() {
         return 5;
     }
 
-    static CanonicalRoomPackages packages = {};
+    static CanonicalRoomPackages room_packages = {};
+    static CanonicalCommonPackages common_packages = {};
     static room::RealRoomRuntime runtime = {};
     static actor::ActorSystem actors = {};
+    static playable::Runtime link_runtime = {};
+    static playable::RenderMetrics render_metrics = {};
     controls::MapperState mapper = {};
     bool gameplay_active = false;
     bool actor_system_active = false;
+    bool renderer_active = false;
     bool terminal_room_error = false;
     save::StartContext handoff = {};
 
@@ -377,45 +465,78 @@ int run_canonical_game() {
                 const char* error_category = "canonical gameplay";
                 const char* error_detail = "unknown failure";
                 if (!initialize_first_playable(
-                        handoff, &packages, &runtime, &actors,
+                        handoff, &room_packages, &common_packages,
+                        &runtime, &actors, &link_runtime, &render_metrics,
                         &error_category, &error_detail)) {
                     draw_room_error(handoff, error_category, error_detail);
                     terminal_room_error = true;
                 } else {
                     gameplay_active = true;
                     actor_system_active = true;
-                    draw_gameplay(runtime, actors);
+                    renderer_active = true;
                 }
             }
         }
 
         if (gameplay_active) {
+            room::set_link_animation_motion(
+                &runtime,
+                playable::source_foot_motion_raw(link_runtime),
+                playable::source_old_frame_rate_next(link_runtime));
             room::update_real_room(&runtime, input, 1.0f / 30.0f);
+
             actor::Context context = {};
             context.player_position = runtime.state.position;
             context.player_heavy_boots = false;
             context.paused = runtime.state.mode == room::LoadState::Paused;
             actor::Interaction interaction = {};
-            if (actor::update_actor_system(&actors, context, &interaction) !=
-                    actor::Error::Ok ||
-                !room::real_room_state_consistent(runtime) ||
-                !actor::actor_system_consistent(actors)) {
+
+            const bool room_ok = room::real_room_state_consistent(runtime);
+            const bool actors_ok =
+                actor::update_actor_system(&actors, context, &interaction) ==
+                    actor::Error::Ok &&
+                actor::actor_system_consistent(actors);
+            const bool link_ok = playable::update_source_animation_and_skin(
+                &link_runtime,
+                runtime.state.locomotion,
+                runtime.state.normal_speed,
+                1.0f / 30.0f);
+
+            if (!room_ok || !actors_ok || !link_ok) {
+                if (renderer_active) {
+                    playable::shutdown_renderer();
+                    renderer_active = false;
+                }
                 draw_room_error(
                     handoff, "runtime update", "gameplay state became invalid");
                 gameplay_active = false;
                 terminal_room_error = true;
-            } else if ((runtime.state.updates % 3u) == 0u) {
-                draw_gameplay(runtime, actors);
+            } else {
+                const playable::RealRoomRenderInput render_input =
+                    make_render_input(runtime, link_runtime);
+                if (!playable::render_real_room_frame(
+                        link_runtime, render_input, &render_metrics)) {
+                    playable::shutdown_renderer();
+                    renderer_active = false;
+                    draw_room_error(
+                        handoff, "renderer", "frame submission failed");
+                    gameplay_active = false;
+                    terminal_room_error = true;
+                }
             }
         }
 
         sleep_microseconds(kFrameDelayMicroseconds);
     }
 
+    if (renderer_active) {
+        playable::shutdown_renderer();
+    }
     if (actor_system_active) {
         actor::destroy_actor_system(&actors);
     }
-    unload_canonical_room_packages(&packages);
+    unload_canonical_common_packages(&common_packages);
+    unload_canonical_room_packages(&room_packages);
     shutdown();
     return terminal_room_error ? 6 : 0;
 }
