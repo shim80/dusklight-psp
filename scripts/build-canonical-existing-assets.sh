@@ -11,6 +11,8 @@ ASSETS="$(assert_project_path build/assets/dusklight-psp/data)"
 MANIFEST="$ASSETS/RESOURCE.MANIFEST"
 [ -s "$MANIFEST" ] || die "assets canoniques locaux absents"
 [ ! -L "$ASSETS" ] || die "répertoire assets symbolique refusé"
+bash "$SCRIPT_DIR/validate-canonical-first-playable-assets.sh" "$ASSETS"
+
 runtime_commit="$(git log -1 --format=%H -- \
   dusklight-main/platforms/psp \
   test/dusklight-psp \
