@@ -25,6 +25,8 @@ private:
 
 class J3DModelData {
 public:
+    static constexpr std::uint32_t kTevRegisterCapacity = 32;
+
     const void* model_bytes() const;
     J3DJoint* getJointNodePointer(std::uint16_t) { return &joint_stub_; }
     const J3DJoint* getJointNodePointer(std::uint16_t) const { return &joint_stub_; }
@@ -52,6 +54,43 @@ public:
     std::uint32_t animation_applications() const {
         return animation_applications_;
     }
+    void record_material_animation(
+        std::uint32_t resource_id, float frame,
+        const dusk::psp::animation::TevRegisterValue* values,
+        std::uint32_t count) {
+        if (values == nullptr || count > kTevRegisterCapacity) {
+            clear_material_animation();
+            return;
+        }
+        material_animation_resource_id_ = resource_id;
+        material_animation_frame_ = frame;
+        material_register_count_ = count;
+        for (std::uint32_t index = 0; index < count; ++index) {
+            material_registers_[index] = values[index];
+        }
+        ++material_animation_applications_;
+    }
+    void clear_material_animation() {
+        material_animation_resource_id_ = 0;
+        material_animation_frame_ = 0.0f;
+        material_register_count_ = 0;
+    }
+    std::uint32_t material_animation_resource_id() const {
+        return material_animation_resource_id_;
+    }
+    float material_animation_frame() const {
+        return material_animation_frame_;
+    }
+    std::uint32_t material_register_count() const {
+        return material_register_count_;
+    }
+    const dusk::psp::animation::TevRegisterValue*
+    material_registers() const {
+        return material_registers_;
+    }
+    std::uint32_t material_animation_applications() const {
+        return material_animation_applications_;
+    }
 
 private:
     friend class dusk::psp::model::PspStaticModelRuntime;
@@ -63,6 +102,12 @@ private:
     float animation_frame_ = 0.0f;
     std::uint32_t animation_joints_ = 0;
     std::uint32_t animation_applications_ = 0;
+    std::uint32_t material_animation_resource_id_ = 0;
+    float material_animation_frame_ = 0.0f;
+    std::uint32_t material_register_count_ = 0;
+    std::uint32_t material_animation_applications_ = 0;
+    dusk::psp::animation::TevRegisterValue
+        material_registers_[kTevRegisterCapacity] = {};
     J3DJoint joint_stub_;
     J3DMaterialTable material_table_;
     J3DMaterial material_stub_;
@@ -84,7 +129,21 @@ private:
     bool configured_ = false;
 };
 
-class J3DAnmTevRegKey {};
+class J3DAnmTevRegKey {
+public:
+    bool configure(
+        const dusk::psp::playable::PackageView& package,
+        std::uint32_t resource_id);
+    const dusk::psp::playable::PackageView& package() const;
+    std::uint32_t resource_id() const;
+    float getFrameMax() const { return frame_max_; }
+
+private:
+    dusk::psp::playable::PackageView package_ = {};
+    std::uint32_t resource_id_ = 0;
+    float frame_max_ = 0.0f;
+    bool configured_ = false;
+};
 
 class J3DFrameCtrl {
 public:
@@ -145,15 +204,34 @@ private:
 class mDoExt_brkAnm : public mDoExt_baseAnm {
 public:
     bool init(
-        J3DModelData*, J3DAnmTevRegKey*, int, int,
-        float rate, std::int16_t, std::int16_t) {
-        setPlaySpeed(rate);
-        return true;
+        J3DModelData* model_data, J3DAnmTevRegKey* brk,
+        int play, int attribute, float rate,
+        std::int16_t start_frame, std::int16_t end_frame);
+    int play();
+    float getPlaySpeed() const;
+    void setPlaySpeed(float speed);
+    float getFrame() const;
+    float getEndFrame() const;
+    float getStartFrame() const;
+    void setFrame(float frame);
+    void setPlayMode(int mode);
+    bool isStop() const;
+    bool isLoop() const;
+    void entry(J3DModelData* model_data, float frame);
+    void entry(J3DModelData* model_data) {
+        entry(model_data, getFrame());
     }
-    void entry(J3DModelData*) {}
+
+private:
+    J3DAnmTevRegKey* animation_ = nullptr;
+    dusk::psp::animation::PspBrkPlayer brk_player_;
 };
 
-inline void mDoExt_brkAnmRemove(J3DModelData*) {}
+inline void mDoExt_brkAnmRemove(J3DModelData* model_data) {
+    if (model_data != nullptr) {
+        model_data->clear_material_animation();
+    }
+}
 
 class J3DModel {
 public:
