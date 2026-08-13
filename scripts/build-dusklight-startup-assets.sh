@@ -121,8 +121,8 @@ convert_pass() {
     ALL_PROXY=http://127.0.0.1:9 \
     NO_PROXY= \
     "$PROBE" >"$destination/fsp108.export.log"
-  "$SCRIPT_DIR/patch-fsp108-alpha-test.py" "$destination/fsp108_room.dprm" \
-    >>"$destination/fsp108.export.log"
+  python3 "$SCRIPT_DIR/patch-fsp108-alpha-test.py" \
+    "$destination/fsp108_room.dprm" >>"$destination/fsp108.export.log"
   "$BUILDER" "$destination/startup.dpst" \
     >"$destination/startup.export.log"
 }
