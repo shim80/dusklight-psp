@@ -12,6 +12,24 @@ bool consume_pose(
     return true;
 }
 
+struct TevCapture {
+    dusk::psp::animation::TevRegisterValue
+        values[J3DModelData::kTevRegisterCapacity];
+    std::uint32_t count;
+};
+
+bool consume_tev(
+    void* user,
+    const dusk::psp::animation::TevRegisterValue& value) {
+    auto* capture = static_cast<TevCapture*>(user);
+    if (capture == nullptr ||
+        capture->count >= J3DModelData::kTevRegisterCapacity) {
+        return false;
+    }
+    capture->values[capture->count++] = value;
+    return true;
+}
+
 }  // namespace
 
 bool J3DAnmTransform::configure(
@@ -37,6 +55,32 @@ J3DAnmTransform::package() const {
 }
 
 std::uint32_t J3DAnmTransform::resource_id() const {
+    return configured_ ? resource_id_ : 0;
+}
+
+bool J3DAnmTevRegKey::configure(
+    const dusk::psp::playable::PackageView& package,
+    std::uint32_t resource_id) {
+    dusk::psp::animation::PspBrkPlayer probe;
+    if (!probe.initialize(
+            package, resource_id,
+            dusk::psp::animation::LoopMode::Once,
+            0.0f, 0.0f, -1.0f)) {
+        return false;
+    }
+    package_ = package;
+    resource_id_ = resource_id;
+    frame_max_ = static_cast<float>(probe.clip().frame_max);
+    configured_ = true;
+    return true;
+}
+
+const dusk::psp::playable::PackageView&
+J3DAnmTevRegKey::package() const {
+    return package_;
+}
+
+std::uint32_t J3DAnmTevRegKey::resource_id() const {
     return configured_ ? resource_id_ : 0;
 }
 
@@ -139,7 +183,88 @@ J3DAnmTransform* mDoExt_bckAnm::getBckAnm() {
     return animation_;
 }
 
+bool mDoExt_brkAnm::init(
+    J3DModelData* model_data, J3DAnmTevRegKey* brk,
+    int play, int attribute, float rate,
+    std::int16_t start_frame, std::int16_t end_frame) {
+    if (model_data == nullptr || brk == nullptr ||
+        !valid_mode(attribute) ||
+        !brk_player_.initialize(
+            brk->package(), brk->resource_id(),
+            static_cast<dusk::psp::animation::LoopMode>(attribute),
+            play != 0 ? rate : 0.0f,
+            static_cast<float>(start_frame),
+            static_cast<float>(end_frame))) {
+        return false;
+    }
+    animation_ = brk;
+    return true;
+}
+
+int mDoExt_brkAnm::play() {
+    return brk_player_.play() ? 1 : 0;
+}
+
+float mDoExt_brkAnm::getPlaySpeed() const {
+    return brk_player_.speed();
+}
+
+void mDoExt_brkAnm::setPlaySpeed(float speed) {
+    brk_player_.set_speed(speed);
+}
+
+float mDoExt_brkAnm::getFrame() const {
+    return brk_player_.frame();
+}
+
+float mDoExt_brkAnm::getEndFrame() const {
+    return brk_player_.end_frame();
+}
+
+float mDoExt_brkAnm::getStartFrame() const {
+    return brk_player_.start_frame();
+}
+
+void mDoExt_brkAnm::setFrame(float frame) {
+    brk_player_.set_frame(frame);
+}
+
+void mDoExt_brkAnm::setPlayMode(int mode) {
+    if (valid_mode(mode)) {
+        brk_player_.set_loop_mode(
+            static_cast<dusk::psp::animation::LoopMode>(mode));
+    }
+}
+
+bool mDoExt_brkAnm::isStop() const {
+    return brk_player_.stopped();
+}
+
+bool mDoExt_brkAnm::isLoop() const {
+    return brk_player_.loop_mode() ==
+               dusk::psp::animation::LoopMode::Loop ||
+           brk_player_.loop_mode() ==
+               dusk::psp::animation::LoopMode::LoopReverse;
+}
+
+void mDoExt_brkAnm::entry(
+    J3DModelData* model_data, float frame) {
+    if (model_data == nullptr || animation_ == nullptr ||
+        !brk_player_.set_frame(frame)) {
+        return;
+    }
+    TevCapture capture = {};
+    if (!brk_player_.apply(consume_tev, &capture)) {
+        return;
+    }
+    model_data->record_material_animation(
+        animation_->resource_id(), frame,
+        capture.values, capture.count);
+}
+
 bool dusk::psp::animation::source_compatibility_surface_valid() {
     return sizeof(J3DAnmTransform) != 0 &&
-           sizeof(mDoExt_bckAnm) != 0;
+           sizeof(J3DAnmTevRegKey) != 0 &&
+           sizeof(mDoExt_bckAnm) != 0 &&
+           sizeof(mDoExt_brkAnm) != 0;
 }
