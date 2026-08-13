@@ -6,17 +6,19 @@ set(DUSK_PSP_ROOT "${DUSKLIGHT_SOURCE_ROOT}/platforms/psp")
 
 # Reconstructed canonical entry target. The historical test/dusklight-psp
 # launcher was lost from the reconstructed repository, while packaging and
-# validation scripts still depend on this target/path. Until the asset-backed
-# canonical game driver is recovered/rebuilt, reuse the already validated
-# startup/save/control PSP entry source so there is one executable boundary
-# and no divergent input/save implementation. Compile the platform, exact-size
-# room loader and package validators here so the real packaged-room handoff is
-# Allegrex-gated before it becomes the launcher entrypoint.
+# validation scripts still depend on this target/path. This target now owns a
+# small PSP bootstrap and the canonical startup/save -> room handoff driver.
+# Public CI can compile and boot this path without proprietary-derived assets;
+# asset-backed first-playable validation remains a separate release gate.
 add_executable(dusklight_psp
-    ../startup-save-psp/main.cpp
+    main.cpp
+    "${DUSK_PSP_ROOT}/src/canonical_game.cpp"
     "${DUSK_PSP_ROOT}/src/platform.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_assets.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_room_loader.cpp"
+    "${DUSK_PSP_ROOT}/src/actor_runtime.cpp"
+    "${DUSK_PSP_ROOT}/src/real_room_runtime.cpp"
+    "${DUSK_PSP_ROOT}/src/room_collision.cpp"
     "${DUSK_PSP_ROOT}/src/room_package.cpp"
     "${DUSK_PSP_ROOT}/src/save_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/save_storage.cpp"
