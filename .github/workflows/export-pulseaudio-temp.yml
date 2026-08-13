@@ -16,7 +16,9 @@ jobs:
           sudo apt-get update
           mkdir -p .work/pulse-debs
           cd .work/pulse-debs
-          apt-get download pulseaudio pulseaudio-utils libpulse0 libpulse-mainloop-glib0
+          apt-get download \
+            pulseaudio pulseaudio-utils libpulse0 libpulse-mainloop-glib0 \
+            libtdb1 libspeexdsp1
           sha256sum *.deb > SHA256SUMS
       - name: Upload PulseAudio packages
         uses: actions/upload-artifact@v4
