@@ -348,9 +348,15 @@ bool initialize_first_playable(
         return false;
     }
 
+    const playable::PackageView room_texture_render_view = {
+        room_packages->textures.view.bytes,
+        room_packages->textures.view.size,
+        room_packages->textures.view.expected_crc,
+        room_packages->textures.view.actual_crc,
+    };
     if (!playable::initialize_real_room_renderer(
             common_packages->link_textures.view,
-            room_packages->textures.view,
+            room_texture_render_view,
             common_packages->hud_ui.view,
             room_packages->model.bytes,
             room_packages->model.size,
