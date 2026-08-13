@@ -1,0 +1,61 @@
+name: Export pinned host asset tools
+
+on:
+  push:
+    branches:
+      - agent/startup-save-flow
+
+jobs:
+  export-tools:
+    if: github.event.head_commit.message == 'Export pinned host asset tools'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout PSP overlay
+        uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl zstd clang cargo
+
+      - name: Assemble pinned Dusklight tool source
+        run: |
+          set -euo pipefail
+          git clone https://github.com/TwilitRealm/dusklight.git .work/full
+          git -C .work/full checkout --detach 1bae8a5e6a812217ca33ba533e707ecfa64b1553
+          rm -rf .work/full/platforms/psp .work/full/scripts .work/full/toolchain
+          cp -a dusklight-main/platforms/psp .work/full/platforms/psp
+          cp -a scripts .work/full/scripts
+          cp -a toolchain .work/full/toolchain
+
+      - name: Bootstrap pinned loader dependencies
+        working-directory: .work/full
+        run: ./scripts/bootstrap-link-loader-sources.sh
+
+      - name: Build host conversion tools
+        working-directory: .work/full
+        env:
+          CC: /usr/bin/clang
+          CXX: /usr/bin/clang++
+        run: |
+          set -euo pipefail
+          ./scripts/build-link-loader-probe.sh
+          cmake -S tools/dusk_startup_builder -B build/host/startup-builder -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host/startup-builder -j 4
+          test -x build/host/link-loader/probe/dusk_link_loader_probe
+          test -x build/host/startup-builder/dusk_startup_builder
+          sha256sum \
+            build/host/link-loader/probe/dusk_link_loader_probe \
+            build/host/startup-builder/dusk_startup_builder \
+            | tee build/host/asset-tools.sha256
+
+      - name: Upload host asset tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-host-asset-tools
+          if-no-files-found: error
+          path: |
+            .work/full/build/host/link-loader/probe/dusk_link_loader_probe
+            .work/full/build/host/startup-builder/dusk_startup_builder
+            .work/full/build/host/asset-tools.sha256
