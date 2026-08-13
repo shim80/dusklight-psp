@@ -21,6 +21,9 @@ jobs:
 
       - name: Verify host save, startup, asset and PSP control semantics
         run: |
+          bash -n scripts/validate-canonical-first-playable-assets.sh
+          bash -n scripts/build-canonical-existing-assets.sh
+          bash -n scripts/run-canonical-first-playable.sh
           cmake -S test/startup-save-host -B .work/build/startup-save-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build .work/build/startup-save-host -j 4
           ./.work/build/startup-save-host/startup_save_host_test | tee .work/startup-save-host.log
