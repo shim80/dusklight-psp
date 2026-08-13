@@ -103,6 +103,11 @@ jobs:
           sleep 8
           cat .work/ppsspp.log || true
           grep -F 'Booted .work/build/dusklight-psp/EBOOT.PBP' .work/ppsspp.log || exit 1
+          if grep -Fq 'DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK' .work/ppsspp.log; then
+            echo 'public CI emitted asset-backed first-playable proof without local game assets' >&2
+            exit 1
+          fi
+          printf 'DUSKLIGHT_PSP_PUBLIC_BOOT_NO_ASSET_PROOF_OK\n'
           import -window root .work/dusklight-psp-canonical-diagnostic.png || exit 1
           test "$(stat -c %s .work/dusklight-psp-canonical-diagnostic.png)" -gt 1000 || exit 1
           identify .work/dusklight-psp-canonical-diagnostic.png || exit 1
