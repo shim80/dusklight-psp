@@ -1,0 +1,31 @@
+name: Export pinned PPSSPP
+
+on:
+  push:
+    branches:
+      - agent/startup-save-flow
+  workflow_dispatch:
+
+jobs:
+  export-ppsspp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download pinned PPSSPP
+        run: |
+          set -euo pipefail
+          mkdir -p .work/ppsspp-export
+          curl -L --fail --retry 3 \
+            -o .work/ppsspp-export/PPSSPP-v1.20.4-anylinux-x86_64.AppImage \
+            https://github.com/hrydgard/ppsspp/releases/download/v1.20.4/PPSSPP-v1.20.4-anylinux-x86_64.AppImage
+          printf '%s  %s\n' \
+            '661c098e6b7f7610171a57b7c533ce8bba6f2312b71e76d61e850461973eba21' \
+            '.work/ppsspp-export/PPSSPP-v1.20.4-anylinux-x86_64.AppImage' \
+            | sha256sum -c -
+
+      - name: Upload pinned PPSSPP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ppsspp-v1.20.4-linux-x86_64
+          compression-level: 0
+          path: .work/ppsspp-export/PPSSPP-v1.20.4-anylinux-x86_64.AppImage
