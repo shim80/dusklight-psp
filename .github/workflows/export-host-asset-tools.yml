@@ -11,13 +11,29 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
-      - name: Checkout PSP overlay
+      - name: Checkout PSP overlay history
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install host build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake git curl zstd clang cargo
+
+      - name: Recover exact historical PSP overlay
+        run: |
+          set -euo pipefail
+          mkdir -p .work/recovered
+          git show 4df42572f9087472e3eb4891583971aad8dcff88:source-overlay/dusklight-psp-code-overlay.tar.gz.b64 \
+            | base64 -d \
+            | tar -xz -C .work/recovered
+          find .work/recovered -maxdepth 4 -type d -path '*/tools/*' -print | sort
+          PROBE_DIR="$(find .work/recovered -type d -path '*/tools/dusk_link_loader_probe' -print -quit)"
+          BUILDER_DIR="$(find .work/recovered -type d -path '*/tools/dusk_startup_builder' -print -quit)"
+          test -n "$PROBE_DIR"
+          test -n "$BUILDER_DIR"
+          printf 'PROBE_DIR=%s\nBUILDER_DIR=%s\n' "$PROBE_DIR" "$BUILDER_DIR" >> "$GITHUB_ENV"
 
       - name: Assemble pinned Dusklight tool source
         run: |
@@ -28,6 +44,9 @@ jobs:
           cp -a dusklight-main/platforms/psp .work/full/platforms/psp
           cp -a scripts .work/full/scripts
           cp -a toolchain .work/full/toolchain
+          mkdir -p .work/full/tools
+          cp -a "$PROBE_DIR" .work/full/tools/dusk_link_loader_probe
+          cp -a "$BUILDER_DIR" .work/full/tools/dusk_startup_builder
 
       - name: Bootstrap pinned loader dependencies
         working-directory: .work/full
