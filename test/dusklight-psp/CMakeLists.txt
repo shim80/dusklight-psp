@@ -7,8 +7,10 @@ set(DUSK_PSP_ROOT "${DUSKLIGHT_SOURCE_ROOT}/platforms/psp")
 # The reconstructed public tree intentionally does not contain the complete
 # pinned upstream Dusklight source tree. The platform-level dusk_psp_runtime
 # target also builds compatibility actors from that missing upstream tree, so
-# this canonical executable uses the renderer/gameplay subset that is wholly
-# owned by the reconstructed PSP overlay. Asset-backed builds assembled from
+# this canonical executable uses the gameplay/renderer subset that is wholly
+# owned by the reconstructed PSP overlay. The renderer list mirrors the
+# official dusk_psp_renderer target and deliberately excludes the separate
+# upstream-dependent static render bridge. Asset-backed builds assembled from
 # the pinned sources remain the parity/release authority.
 add_executable(dusklight_psp
     main.cpp
@@ -33,7 +35,7 @@ add_executable(dusklight_psp
     "${DUSK_PSP_ROOT}/src/render_queue.cpp"
     "${DUSK_PSP_ROOT}/src/render_state_trace.cpp"
     "${DUSK_PSP_ROOT}/src/startup_camera.cpp"
-    "${DUSK_PSP_ROOT}/src/static_mesh_3d.cpp"
+    "${DUSK_PSP_ROOT}/src/actor_render.cpp"
 
     "${DUSK_PSP_ROOT}/src/save_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/save_storage.cpp"
