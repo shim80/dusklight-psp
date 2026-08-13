@@ -13,109 +13,81 @@ Read, in order:
 5. `/dusklight-main/platforms/psp/include/dusk/psp/startup_save_flow.hpp`
 6. `/dusklight-main/platforms/psp/src/startup_save_flow.cpp`
 7. `/dusklight-main/platforms/psp/include/dusk/psp/psp_controls.hpp`
-8. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp`
-9. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_room_loader.hpp`
-10. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_common_loader.hpp`
-11. `/dusklight-main/platforms/psp/src/canonical_game.cpp`
-12. `/dusklight-main/platforms/psp/src/playable_render.cpp`
-13. `/test/canonical-runtime/startup_first_playable_host_test.cpp`
-14. `/test/startup-save-integration-host/main.cpp`
-15. `/test/psp-controls-host/main.cpp`
-16. `/test/dusklight-psp/CMakeLists.txt`
-17. `/test/dusklight-psp/README.md`
-18. `/scripts/validate-canonical-first-playable-assets.sh`
-19. `/scripts/run-canonical-first-playable.sh`
-20. `/test/getawait-heart-probe/main.cpp`
+8. `/dusklight-main/platforms/psp/include/dusk/psp/first_playable_controls.hpp`
+9. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp`
+10. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_room_loader.hpp`
+11. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_common_loader.hpp`
+12. `/dusklight-main/platforms/psp/src/canonical_game.cpp`
+13. `/dusklight-main/platforms/psp/src/playable_render.cpp`
+14. `/test/canonical-runtime/startup_first_playable_host_test.cpp`
+15. `/test/startup-save-integration-host/main.cpp`
+16. `/test/psp-controls-host/main.cpp`
+17. `/test/first-playable-controls-host/main.cpp`
+18. `/test/dusklight-psp/CMakeLists.txt`
+19. `/test/dusklight-psp/README.md`
+20. `/scripts/validate-canonical-first-playable-assets.sh`
+21. `/scripts/run-canonical-first-playable.sh`
+22. `/test/getawait-heart-probe/main.cpp`
 
 Do not infer that a historical report's Git SHA exists in the reconstructed repository. The historical ledger distinguishes provenance from reconstructed commits.
 
-## 2. Required local dependencies
+## 2. Asset safety
 
-Bring your own legally obtained Twilight Princess game image when original assets must be regenerated. Never commit it.
+Bring your own legally obtained Twilight Princess game image when original assets must be regenerated. Never commit extracted or derived commercial game packages.
 
-For the pinned public Linux x86_64 toolchain/PPSSPP setup:
-
-```sh
-./scripts/bootstrap-repro.sh
-export PSPDEV="$PWD/.tools/pspdev"
-export PSPSDK="$PSPDEV/psp/sdk"
-export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
-```
+An authorized workspace asset bundle was successfully located on 2026-08-13 and used locally for the first-playable proof. It contains the canonical F_SP108/Link/HUD packages and packaged startup assets. The assets themselves were not uploaded to GitHub.
 
 ## 3. Latest public checkpoint
 
-Latest fully green canonical public proof: GitHub Actions run `31677276452`, commit `7e01a72a51760c118a86ed0ea4d1fcff5b9e518e`.
+Latest fully green canonical public proof: GitHub Actions run `31679685111`, commit `3318caf88e8ec2cdf84cebc54408dac5fc01cdea`.
 
-Canonical EBOOT SHA-256: `59a6be284bca810f8d22fbf8b65f7eeb87f8b82b2805d4059040cc5894677b9c`.
+Canonical EBOOT SHA-256: `9fce67ba95f3ff6c3be7ce674be324711ff03e17f1986b4a7993fe8f4129d5a2`.
 
-Artifact ID: `9172054577`.
+Artifact ID: `9172983520`.
 
-The run proves:
+The run proves host save/startup/control semantics, first-playable control tracker semantics, canonical asset preflight, Allegrex compile/link, `mips:allegrex` ELF identity, PPSSPP boot and public fail-closed behavior without proprietary assets.
 
-- shell syntax for the asset-backed preflight/build/run scripts;
-- save/startup/integration/control host semantics;
-- F_SP108 canonical asset-path contract;
-- the exact eight-file first-playable preflight;
-- fail-closed behavior when `room.dpsc` is missing;
-- pinned PSPDEV/PPSSPP bootstrap;
-- Allegrex compilation and final link of the canonical driver including Link runtime, room/collision/movebg runtime and PSP playable renderer;
-- `architecture: mips:allegrex` from `psp-objdump`;
-- PPSSPP boot of the canonical EBOOT;
-- explicit absence of asset-backed first-render proof in public CI.
+## 4. Asset-backed proof now achieved
 
-Expected public markers include:
+Using the exact run-82 EBOOT with pinned PPSSPP 1.20.4 (AppImage SHA-256 `661c098e6b7f7610171a57b7c533ce8bba6f2312b71e76d61e850461973eba21`), the local asset-backed route now reaches visible F_SP108 gameplay.
 
-- `STARTUP_SAVE_FLOW_HOST_OK`
-- `STARTUP_SAVE_INTEGRATION_HOST_OK`
-- `CANONICAL_ASSETS_HOST_OK`
-- `PSP_CONTROLS_HOST_OK`
-- `DUSKLIGHT_PSP_FIRST_PLAYABLE_ASSETS_OK files=8 stage=F_SP108 room=1 start=21 layer=0`
-- `DUSKLIGHT_PSP_FIRST_PLAYABLE_ASSETS_FAIL_CLOSED_OK`
-- `DUSKLIGHT_PSP_PUBLIC_BOOT_NO_ASSET_PROOF_OK`
+Observed route:
 
-This is compile/link/boot/guard proof. Public CI does not contain the derived game packages and therefore does not prove that F_SP108 or Link were actually loaded or rendered.
+`file select -> slot creation/persist -> NewGameTransition -> F_SP108/R01/start21 -> room/actor/Link initialization -> PSP gameplay renderer`
 
-## 4. Startup/save/control semantics that must not regress
+A real PPSSPP framebuffer shows Link inside F_SP108 and is committed at:
 
-- exactly three file slots;
-- selected slot starts at 0;
+`screenshot/dusklight-psp-f-sp108-gameplay.jpg`
+
+Analog input was exercised after the first visible frame and produced an observable Link orientation/locomotion change. This is actual asset-backed gameplay, not the synthetic startup probe.
+
+The first local run exposed an old/new HUD-package contract mismatch. The preserved workspace `hud.dpui` is a valid compact DPUI v2 with original gameplay/pause sprites but without the later complete printable-ASCII glyph set. Commit `3318caf88e8ec2cdf84cebc54408dac5fc01cdea` adds a canonical-only validator that still checks package CRC/size/ranges/atlas and requires sprite IDs `0–3`, `10–20`, `30`, `40–43`; the general `validate_dpui()` remains strict.
+
+The PSP runtime marker remains:
+
+`DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK stage=F_SP108 room=1 start=21 actors=9 render=opaque_unlit frame=1`
+
+In the current local headless PPSSPP setup, the PSP platform `log()` stream is not mirrored into the host PPSSPP stdout. Do not invent a marker observation; the accepted proof is the actual framebuffer after all fail-closed initialization gates passed.
+
+## 5. Startup/save/control semantics that must not regress
+
+- exactly three save slots;
 - up/down clamp and do not wrap;
 - Cross or START confirms on PSP;
-- an empty slot creates `F_SP108`, room 1, start 21, layer 0;
-- the new slot is persisted before gameplay handoff;
-- an occupied slot returns its persisted `stage/room/start/layer` context;
-- persistence uses fixed `DPSV` v1 plus CRC32 and exact metadata restoration;
-- corrupt/read-failed saves fail closed;
-- failed writes restore the in-memory pre-write bank and enter the error state;
-- gameplay handoff is not consumable until `NewGameTransition` completes;
-- after handoff, saving updates the selected slot and survives object destruction/recreation;
-- analog movement has a PSP-centered deadzone and normalized output;
+- empty slot creates `F_SP108`, room 1, start 21, layer 0 and persists before handoff;
+- occupied slot restores exact persisted `stage/room/start/layer` and metadata;
+- persistence is `DPSV` v1 + CRC32 and fails closed;
+- analog movement has a centered deadzone and normalized output;
 - Cross=action, L/R=camera, Triangle/Square=zoom, START=pause, Circle=cancel, D-pad=menu, SELECT=debug;
-- one-shot controls are edge-triggered and cannot double-fire while held.
+- one-shot controls are edge-triggered.
 
-## 5. Reconstructed canonical target
+The first-playable control tracker counts effects, not raw input: movement requires displacement, camera requires runtime manual-camera state, action requires the source-prompt action counter to increment, and pause/resume require actual `Playing <-> Paused` transitions.
 
-Historical scripts expect a PSP project at `test/dusklight-psp`, but the historical launcher is absent from the reconstructed public tree.
+Full asset-backed control acceptance is not closed yet. Analog locomotion is visually proven; camera/action/pause/resume still need deterministic acceptance in actual F_SP108.
 
-`test/dusklight-psp` is therefore an explicitly reconstructed build/package boundary, not a claim of exact historical recovery. `main.cpp` is a minimal PSP bootstrap that calls `dusk::psp::game::run_canonical_game()`.
+## 6. Canonical first-playable asset contract
 
-The standalone target mirrors the official PSP renderer source set instead of linking the full platform runtime, because the latter also expects compatibility actors from the complete pinned upstream source tree. The separate upstream-dependent static render bridge is intentionally excluded.
-
-Build it with:
-
-```sh
-psp-cmake -S test/dusklight-psp -B .work/build/dusklight-psp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build .work/build/dusklight-psp -j 4
-$PSPDEV/bin/psp-objdump -f .work/build/dusklight-psp/dusklight_psp.elf
-```
-
-## 6. Canonical first-playable handoff
-
-Required release route:
-
-`intro/opening -> title -> file select -> create/load slot -> NewGameTransition -> F_SP108 first playable -> PSP controls`
-
-At the current checkpoint only `F_SP108 / room 1 / start 21 / layer 0` is accepted.
+At this checkpoint the gameplay handoff accepts exactly `F_SP108 / room 1 / start 21 / layer 0`.
 
 Room packages:
 
@@ -135,23 +107,11 @@ data/common/link.dpan
 data/common/hud.dpui
 ```
 
-Before gameplay activation, `run_canonical_game()` requires:
+The workspace also contains packaged startup data, including `data/startup/startup.dpst`, `title_ui.dpsu`, `file_select.dpsu`, startup logos and title model/texture/animation packages. These should be used next to replace the synthetic/public startup presentation.
 
-- scene actor count 599;
-- start point 21 exists;
-- `RealRoomRuntime` initializes and spawns successfully;
-- room state is consistent;
-- actor system initializes with 9 essential source actors;
-- active count and create-call count are both 9;
-- Link source animation and skin update remains valid.
+## 7. Rendering profile
 
-After activation, mapped PSP input drives `update_real_room()` and `update_actor_system()` at 30 Hz. Unsupported context, missing/corrupt packages, failed spawn or inconsistent state fails closed.
-
-The startup presentation inside the current canonical driver is still a clearly marked synthetic/public fixture so public CI can boot without commercial-derived startup assets. Never describe that as source-faithful intro/title presentation.
-
-## 7. Renderer and asset-backed proof
-
-The canonical gameplay renderer uses:
+Keep the first-playable renderer deliberately conservative while gameplay is incomplete:
 
 - `presentation::Profile::OpaqueOnly`;
 - `RenderProfile::KnownGoodUnlit`;
@@ -159,47 +119,16 @@ The canonical gameplay renderer uses:
 - fog off;
 - shadows off.
 
-The canonical driver emits this one-shot marker only after the first successful real-room frame submission following valid room, actor and Link updates:
+Do not spend the next checkpoint on graphical polish.
 
-```text
-DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK stage=F_SP108 room=1 start=21 actors=9 render=opaque_unlit frame=1
-```
+## 8. Immediate next work
 
-Public CI is required to fail if that marker appears without local game assets.
-
-With authorized derived assets present at `build/assets/dusklight-psp/data`, run exactly:
-
-```sh
-bash scripts/run-canonical-first-playable.sh
-```
-
-The runner:
-
-1. bootstraps pinned tools only if needed;
-2. validates the eight canonical files and manifest boundary;
-3. builds and packages the canonical EBOOT;
-4. launches PPSSPP from the packaged game directory;
-5. records `first-playable-ppsspp.log`;
-6. after PPSSPP exits, fails unless the first-render marker was observed.
-
-The marker is necessary but not sufficient. Acceptance also requires a real asset-backed gameplay framebuffer showing F_SP108 + Link. No usable proprietary F_SP108/Link asset bundle is available in the current agent execution environment, so that proof must be produced in an authorized local environment.
-
-Only a real asset-backed gameplay screenshot may be promoted to repository `screenshot/`.
-
-## 8. Next gameplay-first implementation target
-
-Do not spend the next checkpoint on lighting or visual polish.
-
-Instrument deterministic first-playable PSP control acceptance after gameplay is active. The runtime proof must remain impossible to trigger from public boot-only CI and should cover source-visible effects of:
-
-- analog movement;
-- camera L/R input;
-- Cross action edge;
-- START pause and resume.
-
-First inspect the exact `playable::Input` and `RealRoomRuntime` state transitions before implementing the tracker. Add host semantics for the tracker, compile it into the canonical Allegrex EBOOT, and reserve the final acceptance marker for an asset-backed run with real PSP-mapped input.
-
-After F_SP108 rendering + controls are proven asset-backed, replace the synthetic/public startup presentation with the packaged source-faithful startup assets.
+1. finish deterministic asset-backed control acceptance in F_SP108 for camera, source-prompt Cross action, START pause and resume;
+2. keep the proven room+Link framebuffer path intact;
+3. wire the packaged source-faithful startup assets into the canonical driver instead of the synthetic fixture;
+4. replay `intro/opening -> title -> file select -> save -> F_SP108` in one EBOOT;
+5. add only real source-faithful UI/gameplay screenshots to `screenshot/`;
+6. then evaluate the startup branch for merge/release readiness.
 
 ## 9. Heart Piece / chest track
 
@@ -207,9 +136,7 @@ PR #2 (`Make Demo_Item commit source-owned`) remains draft/unmerged. It may only
 
 PR #4 (`Fix PSP import stub ordering`) was independently validated and merged into `agent/source-demo-item-commit` as `76e3dbedb56970283bfcee4225bf41cd4106836d`.
 
-PR #5 (`Add BRK runtime plumbing for source item effects`) remains draft. Its current compile/smoke proof is green, but it is foundational only and does not yet have a dedicated functional BRK CI gate or asset-backed Heart Piece BRK/TEV rendering proof.
-
-The chest/item-get harness expects local, untracked derived packages including Link DPSK/DPTX/DPAN, R02 room packages, Heart Piece DPRM/DPTX and HUD DPUI. Never commit extracted commercial files.
+PR #5 (`Add BRK runtime plumbing for source item effects`) remains draft. Its compile/smoke proof is green, but it still lacks a dedicated functional BRK gate and asset-backed Heart Piece BRK/TEV rendering proof.
 
 ## 10. Release gate
 
