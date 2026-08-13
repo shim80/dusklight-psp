@@ -1,0 +1,34 @@
+name: Export PPSSPP temporary
+
+on:
+  push:
+    branches:
+      - agent/fsp108-alpha-test-foliage-v2
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl xz-utils
+      - name: Fetch pinned PPSSPP
+        run: |
+          mkdir -p .tools/ppsspp
+          curl -L --fail --retry 3 \
+            -o .tools/ppsspp/PPSSPP.AppImage \
+            https://github.com/hrydgard/ppsspp/releases/download/v1.20.4/PPSSPP-v1.20.4-anylinux-x86_64.AppImage
+          chmod +x .tools/ppsspp/PPSSPP.AppImage
+          sha256sum .tools/ppsspp/PPSSPP.AppImage > .tools/ppsspp/SHA256SUMS
+      - name: Upload PPSSPP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ppsspp-v1.20.4-linux-x86_64
+          path: |
+            .tools/ppsspp/PPSSPP.AppImage
+            .tools/ppsspp/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
