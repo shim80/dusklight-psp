@@ -34,8 +34,6 @@ add_executable(dusklight_psp
     "${DUSK_PSP_ROOT}/src/render_state_trace.cpp"
     "${DUSK_PSP_ROOT}/src/startup_camera.cpp"
     "${DUSK_PSP_ROOT}/src/static_mesh_3d.cpp"
-    "${DUSK_PSP_ROOT}/src/static_render_backend.cpp"
-    "${DUSK_PSP_ROOT}/src/static_render_bridge.cpp"
 
     "${DUSK_PSP_ROOT}/src/save_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/save_storage.cpp"
