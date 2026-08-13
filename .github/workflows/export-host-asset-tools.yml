@@ -8,25 +8,22 @@ on:
 jobs:
   export-tools:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Inspect recovered overlay
+      - name: Fetch pinned gclib source
         run: |
           set -euo pipefail
-          git show 4df42572f9087472e3eb4891583971aad8dcff88:source-overlay/dusklight-psp-code-overlay.tar.gz.b64 > overlay.b64
-          python3 - <<'PY'
-          import base64, io, tarfile, zlib
-          from pathlib import Path
-          source = Path('overlay.b64').read_bytes()
-          source += b'=' * ((4 - len(source) % 4) % 4)
-          decoded = base64.b64decode(source, validate=False)
-          stream = zlib.decompressobj(-zlib.MAX_WBITS)
-          data = stream.decompress(decoded[10:]) + stream.flush()
-          data += b'\0' * ((512 - len(data) % 512) % 512)
-          assert stream.eof
-          with tarfile.open(fileobj=io.BytesIO(data), mode='r:') as archive:
-              names = [m.name for m in archive.getmembers()]
-          print('\n'.join(names))
-          PY
+          git clone https://github.com/LagoLunatic/gclib.git .work/gclib
+          git -C .work/gclib checkout --detach 64127742467acb633d51685b9b1798ab45bb4034
+          test "$(git -C .work/gclib rev-parse HEAD)" = 64127742467acb633d51685b9b1798ab45bb4034
+          rm -rf .work/gclib/.git
+          tar -czf .work/gclib-6412774.tar.gz -C .work gclib
+          sha256sum .work/gclib-6412774.tar.gz
+      - name: Upload pinned gclib source
+        uses: actions/upload-artifact@v4
+        with:
+          name: gclib-6412774-source
+          if-no-files-found: error
+          retention-days: 1
+          path: .work/gclib-6412774.tar.gz
