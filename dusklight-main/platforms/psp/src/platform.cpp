@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <limits>
 
 namespace dusk::psp {
 namespace {
@@ -45,6 +46,33 @@ bool valid_leaf(const char* leaf) {
         }
     }
     return std::strstr(leaf, "..") == nullptr;
+}
+
+bool valid_relative_path(const char* path) {
+    if (path == nullptr || path[0] == '\0' || path[0] == '/') {
+        return false;
+    }
+
+    const char* segment = path;
+    for (const char* cursor = path;; ++cursor) {
+        const char value = *cursor;
+        if (value == '\\' || value == ':') {
+            return false;
+        }
+        if (value == '/' || value == '\0') {
+            const std::size_t length = static_cast<std::size_t>(cursor - segment);
+            if (length == 0 ||
+                (length == 1 && segment[0] == '.') ||
+                (length == 2 && segment[0] == '.' && segment[1] == '.')) {
+                return false;
+            }
+            if (value == '\0') {
+                break;
+            }
+            segment = cursor + 1;
+        }
+    }
+    return true;
 }
 
 int exit_callback(int, int, void*) {
@@ -134,6 +162,50 @@ bool make_game_path(const char* leaf, char* output, std::uint32_t capacity) {
         set_error(-3, "game path exceeds output capacity");
         return false;
     }
+    return true;
+}
+
+bool make_game_relative_path(
+    const char* relative_path, char* output, std::uint32_t capacity) {
+    if (!g_initialized || !valid_relative_path(relative_path) ||
+        output == nullptr || capacity == 0) {
+        set_error(-10, "invalid game relative path request");
+        return false;
+    }
+    const int length =
+        std::snprintf(output, capacity, "%s/%s", g_game_directory, relative_path);
+    if (length <= 0 || static_cast<std::uint32_t>(length) >= capacity) {
+        set_error(-11, "game relative path exceeds output capacity");
+        return false;
+    }
+    return true;
+}
+
+bool file_size(const char* path, std::uint32_t* size) {
+    if (path == nullptr || size == nullptr) {
+        set_error(-12, "invalid file size request");
+        return false;
+    }
+    *size = 0;
+    std::FILE* file = std::fopen(path, "rb");
+    if (file == nullptr) {
+        set_error(-13, "unable to open file for sizing");
+        return false;
+    }
+    if (std::fseek(file, 0, SEEK_END) != 0) {
+        std::fclose(file);
+        set_error(-14, "unable to seek file for sizing");
+        return false;
+    }
+    const long length = std::ftell(file);
+    const int close_result = std::fclose(file);
+    if (length <= 0 || close_result != 0 ||
+        static_cast<unsigned long>(length) >
+            static_cast<unsigned long>(std::numeric_limits<std::uint32_t>::max())) {
+        set_error(-15, "invalid file size");
+        return false;
+    }
+    *size = static_cast<std::uint32_t>(length);
     return true;
 }
 
