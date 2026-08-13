@@ -1,9 +1,12 @@
-name: Export PulseAudio temporary
+name: Export source temporary
 
 on:
   push:
     branches:
       - agent/fsp108-alpha-test-foliage-v2
+
+permissions:
+  contents: read
 
 jobs:
   export:
@@ -11,19 +14,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Download PulseAudio packages
+      - name: Archive tracked source
         run: |
-          sudo apt-get update
-          mkdir -p .work/pulse-debs
-          cd .work/pulse-debs
-          apt-get download \
-            pulseaudio pulseaudio-utils libpulse0 libpulse-mainloop-glib0 \
-            libtdb1 libspeexdsp1
-          sha256sum *.deb > SHA256SUMS
-      - name: Upload PulseAudio packages
-        uses: actions/upload-artifact@v4
+          git ls-files -z | tar --null -T - -czf /tmp/dusklight-source-v2.tgz
+          sha256sum /tmp/dusklight-source-v2.tgz
+      - uses: actions/upload-artifact@v4
         with:
-          name: pulseaudio-ubuntu24-x86_64
-          path: .work/pulse-debs
+          name: dusklight-source-v2
+          path: /tmp/dusklight-source-v2.tgz
           if-no-files-found: error
           retention-days: 1
