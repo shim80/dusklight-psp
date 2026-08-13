@@ -12,6 +12,10 @@ Preserved gameplay work includes source-derived room handoff and locomotion, ori
 
 PR #2 (`Make Demo_Item commit source-owned`) remains draft. Its source-owned `dead() -> normal execute -> execItemGet()` semantics compile, but the changed lifecycle still requires an asset-backed PPSSPP replay through item-get, persistence and clean return to locomotion before merge.
 
+PR #4 (`Fix PSP import stub ordering`) was validated in its own reproducible scope and merged into `agent/source-demo-item-commit` as merge commit `76e3dbedb56970283bfcee4225bf41cd4106836d`. That closes the linker-order implementation on the stacked source branch; it does not relax PR #2's asset-backed gameplay gate.
+
+PR #5 (`Add BRK runtime plumbing for source item effects`) remains draft. Its current PSP compile/smoke path is green, but it is foundational only and still lacks a dedicated functional BRK CI gate plus asset-backed Heart Piece render integration. Gameplay-first work remains higher priority.
+
 ## Startup/save/control checkpoint
 
 Branch `agent/startup-save-flow` contains the persistent startup/save/control boundary required by the release path:
@@ -32,23 +36,36 @@ Host markers retained by CI:
 - `STARTUP_SAVE_INTEGRATION_HOST_OK flow=intro-title-file-select-transition-gameplay new_game=F_SP108/R01/start21 immediate_persist=true continue_context=true gameplay_checkpoint=true`
 - `PSP_CONTROLS_HOST_OK analog=deadzone+normalized move=stick action=cross camera=L/R zoom=triangle/square pause=start cancel=circle menu=dpad debug=select edges=debounced`
 
-## Reconstructed canonical PSP target
+## Latest canonical public checkpoint
 
-`test/dusklight-psp/` is an explicitly reconstructed canonical target, not a byte-for-byte recovery of the lost historical launcher. It has its own minimal PSP bootstrap and calls `dusk::psp::game::run_canonical_game()` instead of sharing the synthetic probe entry.
+`test/dusklight-psp/` is an explicitly reconstructed canonical target, not a byte-for-byte recovery of the lost historical launcher. Its minimal PSP bootstrap calls `dusk::psp::game::run_canonical_game()`.
 
-The current canonical renderer checkpoint is fully green on GitHub Actions run `31676401364`, commit `13aa52b4167bee6d987f80b3d609ae12f331d7ce`:
+Latest fully green public proof: GitHub Actions run `31677276452`, commit `7e01a72a51760c118a86ed0ea4d1fcff5b9e518e`.
 
-- save/startup/control host tests passed;
-- canonical F_SP108 asset-contract host test passed;
-- pinned PSPDEV bootstrap passed;
-- the canonical driver, Link runtime, room/collision/movebg runtime and the existing PSP playable renderer all compiled and linked for Allegrex;
-- `psp-objdump` confirmed `architecture: mips:allegrex`;
-- the generated canonical EBOOT booted in pinned PPSSPP 1.20.4;
-- CI artifact ID: `9171725278`.
+That run proves:
 
-Canonical EBOOT SHA-256: `6098a95f1b45d3b48cfa69740565e26bca460c193812fea390d28a03b02eed6d`.
+- syntax validity of the canonical asset-backed helper scripts;
+- save/startup/control host semantics;
+- canonical F_SP108 asset-path contract;
+- strict eight-file first-playable asset preflight;
+- fail-closed preflight when `room.dpsc` is removed;
+- pinned PSPDEV/PPSSPP bootstrap;
+- canonical driver + Link runtime + room/collision/movebg + PSP playable renderer compile and final link for Allegrex;
+- `psp-objdump` reports `architecture: mips:allegrex`;
+- the generated canonical EBOOT boots in pinned PPSSPP 1.20.4;
+- public PPSSPP does not emit an asset-backed gameplay proof marker when commercial-derived assets are absent.
 
-This public CI run proves compilation, final link and PPSSPP boot of the canonical driver **with the room+Link renderer path present in the EBOOT**. It does **not** prove execution of the asset-backed first room because commercial-derived game packages are intentionally absent from public CI.
+Canonical EBOOT SHA-256: `59a6be284bca810f8d22fbf8b65f7eeb87f8b82b2805d4059040cc5894677b9c`.
+
+CI artifact ID: `9172054577`.
+
+Relevant guards:
+
+- `DUSKLIGHT_PSP_FIRST_PLAYABLE_ASSETS_OK files=8 stage=F_SP108 room=1 start=21 layer=0`
+- `DUSKLIGHT_PSP_FIRST_PLAYABLE_ASSETS_FAIL_CLOSED_OK`
+- `DUSKLIGHT_PSP_PUBLIC_BOOT_NO_ASSET_PROOF_OK`
+
+The public diagnostic framebuffer remains technical boot evidence only. It is not a gameplay screenshot.
 
 ## Canonical first-room handoff
 
@@ -68,20 +85,22 @@ Global Link/HUD resources resolve to:
 
 The canonical loaders measure each file, allocate exact-sized owned storage, validate the packages and retain the buffers for the lifetime of their runtime consumers.
 
-Before entering gameplay, `run_canonical_game()` requires the preserved first-room invariants:
+Before entering gameplay, `run_canonical_game()` requires:
 
 - 599 source scene actors;
 - start point 21 present;
 - successful `RealRoomRuntime` initialization and spawn;
 - 9 essential source actors instantiated;
 - 9 active actors and 9 create calls;
-- consistent room and actor runtime state.
+- consistent room and actor runtime state;
+- valid Link source-animation/skin update;
+- successful PSP room+Link frame submission.
 
-Once these checks pass, PSP-mapped input drives `update_real_room()` and the actor-system update loop at 30 Hz. Any unsupported context, missing/corrupt package, failed spawn or inconsistent runtime fails closed and explicitly does not claim gameplay parity.
+Once these checks pass, PSP-mapped input drives `update_real_room()` and the actor-system update loop at 30 Hz.
 
-## Rendering checkpoint
+## Rendering and proof protocol
 
-The successful room handoff no longer uses debug-screen gameplay telemetry. The canonical driver now initializes the existing PSP playable renderer and Link animation runtime, feeds it the canonical room buffers and live `RealRoomRuntime` camera/player state, and submits a minimal gameplay frame using:
+The canonical driver uses the existing PSP playable renderer with the deliberately conservative profile:
 
 - `presentation::Profile::OpaqueOnly`;
 - `RenderProfile::KnownGoodUnlit`;
@@ -89,13 +108,25 @@ The successful room handoff no longer uses debug-screen gameplay telemetry. The 
 - fog off;
 - shadows off.
 
-The reconstructed standalone target mirrors the official PSP renderer source set and excludes the separate upstream-dependent static render bridge. `movebg_runtime.cpp` is linked because `shadow_runtime` references its receiver collection path even though shadows remain disabled in the current presentation profile.
+A one-shot runtime proof is emitted only after the first successful asset-backed gameplay frame:
 
-Public CI has now proven that this renderer-containing EBOOT cross-compiles, links and boots. The missing proof is an authorized asset-backed PPSSPP run that actually crosses file select, loads F_SP108 and displays room+Link.
+`DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK stage=F_SP108 room=1 start=21 actors=9 render=opaque_unlit frame=1`
+
+The public workflow explicitly fails if that marker ever appears without local game assets, preventing a boot-only run from being misreported as gameplay proof.
+
+The authorized local path is now one command when the derived assets are present under `build/assets/dusklight-psp/data`:
+
+```sh
+bash scripts/run-canonical-first-playable.sh
+```
+
+The runner preflights the eight files, builds/packages the EBOOT, launches PPSSPP from the packaged game directory, captures `first-playable-ppsspp.log`, and fails after PPSSPP exits if the first-render marker was never emitted.
+
+A marker alone is not visual proof. Acceptance still requires a real asset-backed framebuffer showing F_SP108 + Link. No usable proprietary F_SP108/Link asset bundle is available in the current execution environment, so this final visual/runtime proof must be produced in an authorized local environment.
 
 ## Screenshot policy
 
-Repository `screenshot/` is reserved for source-faithful game UI or visible asset-backed gameplay. Text-only diagnostics, synthetic/public probes, boot screens and technical framebuffer captures remain CI evidence only and must not be published as project screenshots.
+Repository `screenshot/` is reserved for source-faithful game UI or visible asset-backed gameplay. Text-only diagnostics, synthetic/public probes, boot screens and technical framebuffer captures remain CI evidence only.
 
 ## Active task
 
@@ -103,15 +134,13 @@ Close the first release path in the canonical EBOOT:
 
 `intro/opening -> title -> file select -> create/load persistent slot -> NewGameTransition -> F_SP108 first playable -> PSP controls`
 
-Immediate implementation target:
+Immediate gameplay-first target:
 
-1. make the authorized local asset-backed build/run path deterministic and one-command;
-2. execute that path with the eight canonical room/Link/HUD packages present;
-3. prove visible F_SP108 room+Link rendering and PSP controls in PPSSPP;
-4. then replace the synthetic/public startup presentation with the packaged source-faithful startup assets;
-5. only then treat the first playable startup path as merge-ready.
-
-Commercial-derived assets remain local and unversioned, so public CI can compile and prove fail-safe behavior but cannot claim asset-backed first-playable parity.
+1. instrument deterministic first-playable PSP control acceptance after the first rendered frame without claiming success from synthetic/public CI;
+2. validate the tracker semantics on the host and its integration in the Allegrex EBOOT;
+3. run `scripts/run-canonical-first-playable.sh` in an authorized asset-backed environment and capture the first-render proof plus real gameplay framebuffer;
+4. prove movement, camera, action and pause/resume in actual F_SP108;
+5. only after that replace the synthetic/public startup presentation with packaged source-faithful startup assets.
 
 ## Explicitly not closed
 
