@@ -15,6 +15,7 @@ set(DUSK_PSP_ROOT "${DUSKLIGHT_SOURCE_ROOT}/platforms/psp")
 add_executable(dusklight_psp
     main.cpp
     "${DUSK_PSP_ROOT}/src/canonical_game.cpp"
+    "${DUSK_PSP_ROOT}/src/first_playable_controls.cpp"
     "${DUSK_PSP_ROOT}/src/platform.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_assets.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_common_loader.cpp"
