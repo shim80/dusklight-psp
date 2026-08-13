@@ -1,9 +1,12 @@
-name: Build canonical EBOOT temporary
+name: Build foliage PEV1 EBOOT temporary
 
 on:
   push:
     branches:
       - agent/fsp108-alpha-test-foliage-v2
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -11,25 +14,57 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply validated PEV1 runtime port
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/fsp108-alpha-runtime.patch.gz.b64 <<'PATCH'
+          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
+          PATCH
+          base64 -d /tmp/fsp108-alpha-runtime.patch.gz.b64 | gzip -dc > /tmp/fsp108-alpha-runtime.patch
+          git apply --check /tmp/fsp108-alpha-runtime.patch
+          git apply /tmp/fsp108-alpha-runtime.patch
+          g++ -std=c++20 -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti \
+            -Idusklight-main/platforms/psp/include \
+            test/canonical-runtime/alpha_material_state_host_test.cpp \
+            dusklight-main/platforms/psp/src/room_package.cpp \
+            -o /tmp/alpha_material_state_host_test
+          /tmp/alpha_material_state_host_test
+      - name: Restore canonical first-playable test harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          validation_ref=2a48047cbd770e60bbfbb34cd5fbb596885a50f9
+          git checkout "$validation_ref" -- test/dusklight-psp
+          while IFS= read -r path; do
+            git checkout "$validation_ref" -- "$path"
+          done < <(git ls-tree -r --name-only "$validation_ref" -- dusklight-main/platforms/psp | \
+            grep -E '/(canonical_(assets|common_loader|game|room_loader|startup_entry|startup_loader)|first_playable_controls)\.(cpp|hpp)$')
       - name: Install host dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake git curl xz-utils
       - name: Bootstrap pinned PSP toolchain
         run: ./scripts/bootstrap-repro.sh
-      - name: Build canonical EBOOT
+      - name: Build canonical first-playable EBOOT
+        shell: bash
         run: |
+          set -euo pipefail
           export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
           export PSPSDK="$PSPDEV/psp/sdk"
           export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
           psp-cmake -S .work/assembled/test/dusklight-psp -B .work/build/dusklight-psp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build .work/build/dusklight-psp -j 4
+          cmake --build .work/build/dusklight-psp -j 4 --verbose 2>&1 | tee /tmp/psp-build.log
           test -f .work/build/dusklight-psp/EBOOT.PBP
+          ! grep -Fq 'Warning: could not fixup imports, stubs out of order.' /tmp/psp-build.log
+          "$PSPDEV/bin/psp-objdump" -f .work/build/dusklight-psp/dusklight_psp.elf | grep -q 'architecture: mips:allegrex'
           sha256sum .work/build/dusklight-psp/EBOOT.PBP > .work/canonical-eboot.sha256
       - name: Upload canonical EBOOT
         uses: actions/upload-artifact@v4
         with:
-          name: canonical-eboot-foliage-v2
+          name: canonical-eboot-foliage-pev1-v2
           path: |
             .work/build/dusklight-psp/EBOOT.PBP
             .work/canonical-eboot.sha256
