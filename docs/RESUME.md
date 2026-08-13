@@ -13,10 +13,14 @@ Read, in order:
 5. `/dusklight-main/platforms/psp/include/dusk/psp/startup_save_flow.hpp`
 6. `/dusklight-main/platforms/psp/src/startup_save_flow.cpp`
 7. `/dusklight-main/platforms/psp/include/dusk/psp/psp_controls.hpp`
-8. `/test/startup-save-integration-host/main.cpp`
-9. `/test/psp-controls-host/main.cpp`
-10. `/test/dusklight-psp/README.md`
-11. `/test/getawait-heart-probe/main.cpp`
+8. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp`
+9. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_room_loader.hpp`
+10. `/dusklight-main/platforms/psp/src/canonical_game.cpp`
+11. `/test/canonical-runtime/startup_first_playable_host_test.cpp`
+12. `/test/startup-save-integration-host/main.cpp`
+13. `/test/psp-controls-host/main.cpp`
+14. `/test/dusklight-psp/README.md`
+15. `/test/getawait-heart-probe/main.cpp`
 
 Do not infer that a historical report's Git SHA exists in the reconstructed repository. The historical ledger distinguishes provenance from reconstructed commits.
 
@@ -46,6 +50,10 @@ cmake -S test/startup-save-integration-host -B .work/build/startup-save-integrat
 cmake --build .work/build/startup-save-integration-host -j 4
 ./.work/build/startup-save-integration-host/startup_save_integration_host_test
 
+cmake -S test/canonical-assets-host -B .work/build/canonical-assets-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build .work/build/canonical-assets-host -j 4
+./.work/build/canonical-assets-host/canonical_assets_host_test
+
 cmake -S test/psp-controls-host -B .work/build/psp-controls-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build .work/build/psp-controls-host -j 4
 ./.work/build/psp-controls-host/psp_controls_host_test
@@ -55,11 +63,14 @@ Expected markers:
 
 - `STARTUP_SAVE_FLOW_HOST_OK`
 - `STARTUP_SAVE_INTEGRATION_HOST_OK`
+- `CANONICAL_ASSETS_HOST_OK`
 - `PSP_CONTROLS_HOST_OK`
 
-Latest fully green public proof before canonical-target reconstruction: GitHub Actions run `31631766479`, commit `5d3cbfe5a928e572a72fda0d0559ca4ab69baabd`. It cross-built and booted the PSP startup/save/control flow in PPSSPP 1.20.4. Development EBOOT SHA-256: `264a15635c56017b794eeea990ad00715b4db88b863f9a23f3775bff4efdeed0`.
+Latest fully green canonical public proof: GitHub Actions run `31672752146`, commit `d7eebf2c5bb8be75d8c47c507dd5dea58ff1c213`. It cross-builds the canonical gameplay driver for Allegrex and boots its EBOOT in PPSSPP 1.20.4. Canonical EBOOT SHA-256: `bd7374ed26c054f8bd7b27191daa3b8d591682ad8e8af6c3182a0492f9fbd072`. Artifact ID: `9170341638`.
 
-The PSP probe itself now consumes `StartupSaveFlow` and maps real `SceCtrlData` through `psp_controls`; it no longer bypasses the startup/save boundary by calling `FileSelectRuntime` directly.
+This is compilation/boot proof. Public CI does not contain the derived game packages and therefore does not prove that F_SP108 was loaded or rendered.
+
+The separate startup/save PSP probe remains synthetic/public and is kept only as a diagnostic boundary. The canonical target no longer shares its entry point.
 
 ## 4. Startup/save/control semantics that must not regress
 
@@ -81,9 +92,9 @@ The PSP probe itself now consumes `StartupSaveFlow` and maps real `SceCtrlData` 
 
 ## 5. Reconstructed canonical target
 
-Historical scripts `scripts/build-canonical-existing-assets.sh` and `scripts/package-dusklight-psp.sh` expect a PSP project at `test/dusklight-psp` producing `dusklight_psp.elf` and `EBOOT.PBP`, but that historical launcher is absent from the reconstructed public tree.
+Historical scripts `scripts/build-canonical-existing-assets.sh` and `scripts/package-dusklight-psp.sh` expect a PSP project at `test/dusklight-psp` producing `dusklight_psp.elf` and `EBOOT.PBP`, but the historical launcher is absent from the reconstructed public tree.
 
-`test/dusklight-psp` has therefore been restored as an explicitly **reconstructed build/package boundary**, not as a claim of exact historical recovery. At the current checkpoint it builds the same validated startup/save/control entry source as `test/startup-save-psp` so there is only one implementation of the release-path save/input semantics.
+`test/dusklight-psp` is therefore an explicitly **reconstructed build/package boundary**, not a claim of exact historical recovery. It now has a small PSP bootstrap in `test/dusklight-psp/main.cpp` that calls `dusk::psp::game::run_canonical_game()`.
 
 Build it with:
 
@@ -93,23 +104,55 @@ cmake --build .work/build/dusklight-psp -j 4
 $PSPDEV/bin/psp-objdump -f .work/build/dusklight-psp/dusklight_psp.elf
 ```
 
-The active CI now gates both the public probe and this reconstructed canonical target and boots the canonical `EBOOT.PBP` in PPSSPP. Check the newest `PSP startup save flow` run before claiming this reconstruction is green.
+The canonical target currently compiles `canonical_game.cpp`, `canonical_room_loader.cpp`, `actor_runtime.cpp`, `real_room_runtime.cpp`, `room_collision.cpp`, `room_package.cpp`, startup/save/control sources and platform support.
 
-## 6. Next implementation target — asset-backed release path
+## 6. Canonical first-playable handoff
 
-Replace the shared public probe entry beneath the reconstructed canonical target with the asset-backed game driver using preserved contracts rather than guessed historical source.
-
-Required route:
+Required release route:
 
 `intro/opening -> title -> file select -> create/load slot -> NewGameTransition -> F_SP108 first playable -> PSP controls`
 
-Preserve the historical boundary marker expectation `NEW_GAME_TRANSITION.OK=DUSKLIGHT_PSP_F_SP108_FIRST_PLAYABLE_OK` and `source_stage=F_SP108`, but make the selected persistent `StartContext` authoritative for the handoff.
+The selected persistent `StartContext` is authoritative. At the current checkpoint only `F_SP108 / room 1 / start 21 / layer 0` is accepted and resolves to:
 
-`test/canonical-runtime/startup_first_playable_host_test.cpp` proves the existing F_SP108 runtime contract: model/textures/collision/scene packages validate, spawn 21 initializes `RealRoomRuntime`, and the expected first room contains 599 source actors with 9 essential actors instantiated by the current PSP actor system.
+- `data/stages/F_SP108/R01/room.dprm`
+- `data/stages/F_SP108/R01/room.dptx`
+- `data/stages/F_SP108/R01/room.dpcl`
+- `data/stages/F_SP108/R01/room.dpsc`
 
-Full validation needs legally supplied startup/game-derived packages. Do not fabricate those packages or convert a synthetic fixture into a claim of asset-backed startup parity.
+`canonical_room_loader` measures each file, allocates exact-sized owned storage, validates DPRM/DPTX/DPCL/DPSC and retains those buffers for the lifetime of all `PackageView` consumers.
 
-## 7. Asset contract for GETAWAIT Heart Piece proof
+Before gameplay activation, `run_canonical_game()` requires the preserved historical first-playable contract:
+
+- scene actor count 599;
+- start point 21 exists;
+- `RealRoomRuntime` initializes and spawns successfully;
+- room state is consistent;
+- actor system initializes with 9 essential source actors;
+- active count and create-call count are both 9;
+- actor-system state is consistent.
+
+After activation, mapped PSP input drives `update_real_room()` and `update_actor_system()` at 30 Hz. Unsupported context, missing/corrupt packages, failed spawn or inconsistent state fails closed.
+
+The startup presentation inside the current canonical driver is still a clearly marked synthetic/public fixture so public CI can boot without commercial-derived startup assets. Never describe that as source-faithful intro/title presentation.
+
+## 7. Next implementation target — visible first playable
+
+Replace the canonical driver's debug-screen gameplay telemetry with the already-existing PSP render stack, preserving minimal/unlit presentation while gameplay comes first.
+
+Inspect and reuse rather than rewrite:
+
+- `dusklight-main/platforms/psp/include/dusk/psp/graphics.hpp`
+- `dusklight-main/platforms/psp/src/graphics.cpp`
+- `dusklight-main/platforms/psp/src/playable_render.cpp`
+- `dusklight-main/platforms/psp/src/actor_render.cpp`
+- `dusklight-main/platforms/psp/src/static_render_backend.cpp`
+- `dusklight-main/platforms/psp/src/static_render_bridge.cpp`
+
+Determine the exact additional packaged Link/HUD/model paths from the current asset builder/manifest before modifying the canonical asset contract. Do not guess filenames.
+
+Then perform one authorized asset-backed PPSSPP run proving the save handoff loads F_SP108, renders the room/player, accepts PSP controls and remains stable. Public synthetic-fixture proof is necessary but not sufficient.
+
+## 8. Asset contract for GETAWAIT Heart Piece proof
 
 The chest/item-get harness expects local, untracked derived packages:
 
@@ -129,13 +172,13 @@ Known identities:
 
 Never commit extracted commercial files.
 
-## 8. Pull-request gates
+## 9. Pull-request gates
 
 PR #2 (`Make Demo_Item commit source-owned`) remains draft/unmerged. It may only be promoted after one asset-backed PPSSPP run proves the complete chest lifecycle after the source-owned commit: chest visible/closed, OPEN, BOXOP/GETA/GETAWAIT, Heart Piece visibility, inventory unchanged before acknowledgement, `dead()` followed by exactly one source `execItemGet()`, persistence/recreation and clean Link locomotion, with marker and real screenshot.
 
 The startup/save/control branch may only be promoted once the reconstructed canonical target is wired to the asset-backed intro/title/F_SP108 route and replayed in PPSSPP. Public synthetic-fixture proof is necessary but not sufficient.
 
-## 9. Release gate
+## 10. Release gate
 
 Do not publish the first public EBOOT release until all are ready together:
 
