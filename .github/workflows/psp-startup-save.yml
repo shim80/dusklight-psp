@@ -38,6 +38,29 @@ jobs:
           ./.work/build/psp-controls-host/psp_controls_host_test | tee .work/psp-controls-host.log
           grep -F 'PSP_CONTROLS_HOST_OK' .work/psp-controls-host.log
 
+          asset_root="$GITHUB_WORKSPACE/.work/first-playable-assets/data"
+          mkdir -p "$asset_root/common" "$asset_root/stages/F_SP108/R01"
+          printf 'synthetic-manifest\n' >"$asset_root/RESOURCE.MANIFEST"
+          for relative in \
+            common/link.dpsk \
+            common/link.dptx \
+            common/link.dpan \
+            common/hud.dpui \
+            stages/F_SP108/R01/room.dprm \
+            stages/F_SP108/R01/room.dptx \
+            stages/F_SP108/R01/room.dpcl \
+            stages/F_SP108/R01/room.dpsc; do
+            printf 'synthetic-preflight-only\n' >"$asset_root/$relative"
+          done
+          bash scripts/validate-canonical-first-playable-assets.sh "$asset_root" | tee .work/first-playable-assets.log
+          grep -F 'DUSKLIGHT_PSP_FIRST_PLAYABLE_ASSETS_OK files=8 stage=F_SP108 room=1 start=21 layer=0' .work/first-playable-assets.log
+          rm "$asset_root/stages/F_SP108/R01/room.dpsc"
+          if bash scripts/validate-canonical-first-playable-assets.sh "$asset_root" >/dev/null 2>&1; then
+            echo 'asset preflight accepted an incomplete first-playable package' >&2
+            exit 1
+          fi
+          printf 'DUSKLIGHT_PSP_FIRST_PLAYABLE_ASSETS_FAIL_CLOSED_OK\n' | tee -a .work/first-playable-assets.log
+
       - name: Bootstrap pinned PSP toolchain and PPSSPP
         run: ./scripts/bootstrap-repro.sh
 
@@ -105,6 +128,7 @@ jobs:
             .work/startup-save-integration-host.log
             .work/canonical-assets-host.log
             .work/psp-controls-host.log
+            .work/first-playable-assets.log
             .work/dusklight-psp-canonical-diagnostic.png
             .work/ppsspp.log
             .work/xvfb.log
