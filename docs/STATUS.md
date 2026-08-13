@@ -34,32 +34,39 @@ Host markers retained by CI:
 
 ## Reconstructed canonical PSP target
 
-`test/dusklight-psp/` is an explicitly reconstructed canonical target, not a byte-for-byte recovery of the lost historical launcher. It now has its own minimal PSP bootstrap and calls `dusk::psp::game::run_canonical_game()` instead of sharing the synthetic probe entry.
+`test/dusklight-psp/` is an explicitly reconstructed canonical target, not a byte-for-byte recovery of the lost historical launcher. It has its own minimal PSP bootstrap and calls `dusk::psp::game::run_canonical_game()` instead of sharing the synthetic probe entry.
 
-The current canonical checkpoint is green on GitHub Actions run `31672752146`, commit `d7eebf2c5bb8be75d8c47c507dd5dea58ff1c213`:
+The current canonical renderer checkpoint is fully green on GitHub Actions run `31676401364`, commit `13aa52b4167bee6d987f80b3d609ae12f331d7ce`:
 
 - save/startup/control host tests passed;
 - canonical F_SP108 asset-contract host test passed;
 - pinned PSPDEV bootstrap passed;
-- `canonical_game.cpp`, canonical room loading, `RealRoomRuntime`, collision and actor runtime compiled for Allegrex;
+- the canonical driver, Link runtime, room/collision/movebg runtime and the existing PSP playable renderer all compiled and linked for Allegrex;
 - `psp-objdump` confirmed `architecture: mips:allegrex`;
 - the generated canonical EBOOT booted in pinned PPSSPP 1.20.4;
-- CI artifact ID: `9170341638`.
+- CI artifact ID: `9171725278`.
 
-Canonical EBOOT SHA-256: `bd7374ed26c054f8bd7b27191daa3b8d591682ad8e8af6c3182a0492f9fbd072`.
+Canonical EBOOT SHA-256: `6098a95f1b45d3b48cfa69740565e26bca460c193812fea390d28a03b02eed6d`.
 
-This public CI run proves compilation and boot of the real canonical driver. It does **not** prove execution of the asset-backed first room because commercial-derived game packages are intentionally absent from public CI.
+This public CI run proves compilation, final link and PPSSPP boot of the canonical driver **with the room+Link renderer path present in the EBOOT**. It does **not** prove execution of the asset-backed first room because commercial-derived game packages are intentionally absent from public CI.
 
 ## Canonical first-room handoff
 
-The selected persistent `StartContext` is now consumed by the canonical driver. The currently supported first-playable contract is exactly `F_SP108 / room 1 / start 21 / layer 0`, resolving to:
+The selected persistent `StartContext` is consumed by the canonical driver. The currently supported first-playable contract is exactly `F_SP108 / room 1 / start 21 / layer 0`, resolving to:
 
 - `data/stages/F_SP108/R01/room.dprm`
 - `data/stages/F_SP108/R01/room.dptx`
 - `data/stages/F_SP108/R01/room.dpcl`
 - `data/stages/F_SP108/R01/room.dpsc`
 
-The canonical loader measures each file, allocates exact-sized owned storage, validates DPRM/DPTX/DPCL/DPSC and keeps all four buffers alive for the lifetime of the room runtime.
+Global Link/HUD resources resolve to:
+
+- `data/common/link.dpsk`
+- `data/common/link.dptx`
+- `data/common/link.dpan`
+- `data/common/hud.dpui`
+
+The canonical loaders measure each file, allocate exact-sized owned storage, validate the packages and retain the buffers for the lifetime of their runtime consumers.
 
 Before entering gameplay, `run_canonical_game()` requires the preserved first-room invariants:
 
@@ -70,11 +77,21 @@ Before entering gameplay, `run_canonical_game()` requires the preserved first-ro
 - 9 active actors and 9 create calls;
 - consistent room and actor runtime state.
 
-Once these checks pass, PSP-mapped input drives both `update_real_room()` and the actor-system update loop at 30 Hz. Any unsupported context, missing/corrupt package, failed spawn or inconsistent runtime fails closed and explicitly does not claim gameplay parity.
+Once these checks pass, PSP-mapped input drives `update_real_room()` and the actor-system update loop at 30 Hz. Any unsupported context, missing/corrupt package, failed spawn or inconsistent runtime fails closed and explicitly does not claim gameplay parity.
 
 ## Rendering checkpoint
 
-The canonical driver currently uses debug-screen telemetry after a successful room handoff. This is **not** visible gameplay proof. The repository already contains the PSP render stack (`graphics.cpp`, `playable_render.cpp`, `actor_render.cpp`, `static_render_backend.cpp`, `static_render_bridge.cpp`), and the next implementation step is to reuse that existing pipeline for minimal/unlit F_SP108 rendering rather than invent a new renderer.
+The successful room handoff no longer uses debug-screen gameplay telemetry. The canonical driver now initializes the existing PSP playable renderer and Link animation runtime, feeds it the canonical room buffers and live `RealRoomRuntime` camera/player state, and submits a minimal gameplay frame using:
+
+- `presentation::Profile::OpaqueOnly`;
+- `RenderProfile::KnownGoodUnlit`;
+- lighting off;
+- fog off;
+- shadows off.
+
+The reconstructed standalone target mirrors the official PSP renderer source set and excludes the separate upstream-dependent static render bridge. `movebg_runtime.cpp` is linked because `shadow_runtime` references its receiver collection path even though shadows remain disabled in the current presentation profile.
+
+Public CI has now proven that this renderer-containing EBOOT cross-compiles, links and boots. The missing proof is an authorized asset-backed PPSSPP run that actually crosses file select, loads F_SP108 and displays room+Link.
 
 ## Screenshot policy
 
@@ -88,19 +105,20 @@ Close the first release path in the canonical EBOOT:
 
 Immediate implementation target:
 
-1. reuse the existing PSP graphics/playable/static render stack for minimal room rendering;
-2. draw the loaded F_SP108 room and player using the canonical runtime state;
-3. retain PSP-mapped movement/camera/action/pause updates;
-4. execute one authorized asset-backed PPSSPP run of the complete handoff;
-5. only then treat the first playable room as proven.
+1. make the authorized local asset-backed build/run path deterministic and one-command;
+2. execute that path with the eight canonical room/Link/HUD packages present;
+3. prove visible F_SP108 room+Link rendering and PSP controls in PPSSPP;
+4. then replace the synthetic/public startup presentation with the packaged source-faithful startup assets;
+5. only then treat the first playable startup path as merge-ready.
 
 Commercial-derived assets remain local and unversioned, so public CI can compile and prove fail-safe behavior but cannot claim asset-backed first-playable parity.
 
 ## Explicitly not closed
 
 - complete asset-backed canonical intro/title/save/F_SP108 one-EBOOT run;
-- visible F_SP108 gameplay rendering in the canonical driver;
+- visible F_SP108 gameplay rendering proof in the canonical driver;
 - first-playable control acceptance in the actual F_SP108 gameplay runtime;
+- source-faithful packaged intro/title presentation in the canonical EBOOT;
 - full inventory/pause UI fidelity;
 - all chest sizes/items and full item message integration;
 - source item BCK/BRK/TEV visual fidelity;
