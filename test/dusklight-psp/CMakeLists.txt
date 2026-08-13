@@ -14,6 +14,7 @@ set(DUSK_PSP_ROOT "${DUSKLIGHT_SOURCE_ROOT}/platforms/psp")
 # the pinned sources remain the parity/release authority.
 add_executable(dusklight_psp
     main.cpp
+    "${DUSK_PSP_ROOT}/src/canonical_startup_entry.cpp"
     "${DUSK_PSP_ROOT}/src/canonical_game.cpp"
     "${DUSK_PSP_ROOT}/src/first_playable_controls.cpp"
     "${DUSK_PSP_ROOT}/src/platform.cpp"
@@ -24,6 +25,7 @@ add_executable(dusklight_psp
 
     "${DUSK_PSP_ROOT}/src/playable_package.cpp"
     "${DUSK_PSP_ROOT}/src/playable_runtime.cpp"
+    "${DUSK_PSP_ROOT}/src/bck_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/actor_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/real_room_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/movebg_runtime.cpp"
