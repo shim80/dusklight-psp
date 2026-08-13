@@ -419,6 +419,7 @@ int run_canonical_game() {
     bool actor_system_active = false;
     bool renderer_active = false;
     bool terminal_room_error = false;
+    bool first_render_proven = false;
     save::StartContext handoff = {};
 
     draw_file_select(
@@ -528,6 +529,12 @@ int run_canonical_game() {
                         handoff, "renderer", "frame submission failed");
                     gameplay_active = false;
                     terminal_room_error = true;
+                } else if (!first_render_proven) {
+                    log(
+                        "DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK "
+                        "stage=F_SP108 room=1 start=21 actors=9 "
+                        "render=opaque_unlit frame=1");
+                    first_render_proven = true;
                 }
             }
         }
