@@ -22,7 +22,7 @@ jobs:
           export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
           export PSPSDK="$PSPDEV/psp/sdk"
           export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
-          psp-cmake -S test/dusklight-psp -B .work/build/dusklight-psp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          psp-cmake -S .work/assembled/test/dusklight-psp -B .work/build/dusklight-psp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build .work/build/dusklight-psp -j 4
           test -f .work/build/dusklight-psp/EBOOT.PBP
           sha256sum .work/build/dusklight-psp/EBOOT.PBP > .work/canonical-eboot.sha256
