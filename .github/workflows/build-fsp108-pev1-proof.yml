@@ -51,6 +51,7 @@ jobs:
             dusklight-main/platforms/psp/src/save_storage.cpp \
             dusklight-main/platforms/psp/src/startup_save_flow.cpp \
             dusklight-main/platforms/psp/src/psp_controls.cpp \
+            dusklight-main/platforms/psp/src/platform.cpp \
             dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp \
             dusklight-main/platforms/psp/include/dusk/psp/canonical_common_loader.hpp \
             dusklight-main/platforms/psp/include/dusk/psp/canonical_game.hpp \
@@ -61,7 +62,8 @@ jobs:
             dusklight-main/platforms/psp/include/dusk/psp/save_runtime.hpp \
             dusklight-main/platforms/psp/include/dusk/psp/save_storage.hpp \
             dusklight-main/platforms/psp/include/dusk/psp/startup_save_flow.hpp \
-            dusklight-main/platforms/psp/include/dusk/psp/psp_controls.hpp; do
+            dusklight-main/platforms/psp/include/dusk/psp/psp_controls.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/platform.hpp; do
             git checkout "$validation_ref" -- "$path"
           done
 
