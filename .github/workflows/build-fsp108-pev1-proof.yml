@@ -1,0 +1,97 @@
+name: Build F_SP108 PEV1 proof
+
+on:
+  push:
+    branches:
+      - agent/fsp108-alpha-test-foliage-v2
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply PEV1 runtime patch from validated workflow payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '/^[[:space:]]*H4sIA/{gsub(/^[[:space:]]+/, ""); print; exit}' .github/workflows/build-canonical-eboot-temp.yml > /tmp/pev1.b64
+          base64 -d /tmp/pev1.b64 | gzip -dc > /tmp/pev1.patch
+          test "$(sha256sum /tmp/pev1.patch | awk '{print $1}')" = 395c46b1e840ccb07ca8265dba8450e08e6a9bba197d8ba937162db1487957d0
+          git apply --check /tmp/pev1.patch
+          git apply /tmp/pev1.patch
+          g++ -std=c++20 -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti \
+            -Idusklight-main/platforms/psp/include \
+            test/canonical-runtime/alpha_material_state_host_test.cpp \
+            dusklight-main/platforms/psp/src/room_package.cpp \
+            -o /tmp/alpha_material_state_host_test
+          /tmp/alpha_material_state_host_test
+
+      - name: Restore historical first-playable validation harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          validation_ref=2a48047cbd770e60bbfbb34cd5fbb596885a50f9
+          git checkout "$validation_ref" -- test/dusklight-psp
+          for path in \
+            dusklight-main/platforms/psp/src/canonical_assets.cpp \
+            dusklight-main/platforms/psp/src/canonical_common_loader.cpp \
+            dusklight-main/platforms/psp/src/canonical_game.cpp \
+            dusklight-main/platforms/psp/src/canonical_room_loader.cpp \
+            dusklight-main/platforms/psp/src/canonical_startup_entry.cpp \
+            dusklight-main/platforms/psp/src/canonical_startup_loader.cpp \
+            dusklight-main/platforms/psp/src/first_playable_controls.cpp \
+            dusklight-main/platforms/psp/src/save_runtime.cpp \
+            dusklight-main/platforms/psp/src/save_storage.cpp \
+            dusklight-main/platforms/psp/src/startup_save_flow.cpp \
+            dusklight-main/platforms/psp/src/psp_controls.cpp \
+            dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/canonical_common_loader.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/canonical_game.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/canonical_room_loader.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/canonical_startup_entry.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/canonical_startup_loader.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/first_playable_controls.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/save_runtime.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/save_storage.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/startup_save_flow.hpp \
+            dusklight-main/platforms/psp/include/dusk/psp/psp_controls.hpp; do
+            git checkout "$validation_ref" -- "$path"
+          done
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl xz-utils
+
+      - name: Bootstrap pinned PSP toolchain
+        run: ./scripts/bootstrap-repro.sh
+
+      - name: Build Allegrex EBOOT
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake -S .work/assembled/test/dusklight-psp -B .work/build/dusklight-psp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/dusklight-psp -j 4 --verbose 2>&1 | tee /tmp/psp-build.log
+          test -f .work/build/dusklight-psp/EBOOT.PBP
+          ! grep -Fq 'Warning: could not fixup imports, stubs out of order.' /tmp/psp-build.log
+          "$PSPDEV/bin/psp-objdump" -f .work/build/dusklight-psp/dusklight_psp.elf | grep -q 'architecture: mips:allegrex'
+          sha256sum .work/build/dusklight-psp/EBOOT.PBP > .work/canonical-eboot.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fsp108-pev1-eboot
+          path: |
+            .work/build/dusklight-psp/EBOOT.PBP
+            .work/canonical-eboot.sha256
+          if-no-files-found: error
+          retention-days: 1
