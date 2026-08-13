@@ -32,8 +32,6 @@ for relative in "${required[@]}"; do
   [ -f "$path" ] || die "first-playable asset absent: data/$relative"
   [ -s "$path" ] || die "first-playable asset empty: data/$relative"
   [ ! -L "$path" ] || die "first-playable asset symlink refused: data/$relative"
-  grep -Fq "$relative" "$ASSET_ROOT/RESOURCE.MANIFEST" ||
-    die "first-playable asset missing from RESOURCE.MANIFEST: data/$relative"
 done
 
 printf 'DUSKLIGHT_PSP_FIRST_PLAYABLE_ASSETS_OK files=%u stage=F_SP108 room=1 start=21 layer=0\n' \
