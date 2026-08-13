@@ -1,0 +1,30 @@
+{
+  "schema": "dusklight.psp.alpha-material-state.v1",
+  "source_model": "F_SP108/R01/model.bmd",
+  "material_count": 22,
+  "notes": "Effective J3D PE state from report 187. Texture identities are complete for all non-opaque records; opaque multistage identities not required for this V4C alpha-state integration are explicitly marked incomplete.",
+  "materials": [
+    {"id":0,"name":"aa_IsekiRock_v","class":"OPAQUE","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[7,0,1,7,0],"blend":[0,1,0,3],"cull":2,"textures":[17],"texture_count":1,"texture_identities_complete":true},
+    {"id":1,"name":"aa_MA04_Kabe_v","class":"OPAQUE","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[7,0,1,7,0],"blend":[0,1,0,3],"cull":2,"textures":[2],"texture_count":2,"texture_identities_complete":false},
+    {"id":2,"name":"aa_MA04_KoyojyuMiki_v","class":"OPAQUE","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[7,0,1,7,0],"blend":[0,1,0,3],"cull":2,"textures":[16],"texture_count":2,"texture_identities_complete":false},
+    {"id":3,"name":"aa_MA04_KusaA_v","class":"OPAQUE","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[7,0,1,7,0],"blend":[0,1,0,3],"cull":2,"textures":[4],"texture_count":2,"texture_identities_complete":false},
+    {"id":4,"name":"aa_MA04_KusaB_v","class":"OPAQUE","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[7,0,1,7,0],"blend":[0,1,0,3],"cull":2,"textures":[3],"texture_count":2,"texture_identities_complete":false},
+    {"id":5,"name":"aa_MA04_Mountain_v","class":"OPAQUE","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[7,0,1,7,0],"blend":[0,1,0,3],"cull":2,"textures":[0],"texture_count":2,"texture_identities_complete":false},
+    {"id":6,"name":"aa_MA04_Tuti_v","class":"OPAQUE","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[7,0,1,7,0],"blend":[0,1,0,3],"cull":2,"textures":[5],"texture_count":2,"texture_identities_complete":false},
+    {"id":7,"name":"bb_KiBack_v","class":"ALPHA_TEST","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[6,128,0,3,255],"blend":[0,1,0,3],"cull":2,"textures":[15],"texture_count":1,"texture_identities_complete":true},
+    {"id":8,"name":"bb_KiLow_v","class":"ALPHA_TEST","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[6,128,0,3,255],"blend":[0,1,0,3],"cull":0,"textures":[14],"texture_count":1,"texture_identities_complete":true},
+    {"id":9,"name":"bb_KoyojyuLeaf_v","class":"ALPHA_TEST","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[6,128,0,3,255],"blend":[0,1,0,3],"cull":0,"textures":[13],"texture_count":1,"texture_identities_complete":true},
+    {"id":10,"name":"bb_MA04_Iriguchi_v","class":"ALPHA_TEST","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[6,128,0,3,255],"blend":[0,1,0,3],"cull":0,"textures":[12],"texture_count":1,"texture_identities_complete":true},
+    {"id":11,"name":"bb_MA04_Sida_v","class":"ALPHA_TEST","draw_buffer":"OPAQUE","z":[1,3,1],"alpha":[6,128,0,3,255],"blend":[0,1,0,3],"cull":0,"textures":[11],"texture_count":1,"texture_identities_complete":true},
+    {"id":12,"name":"cc_MA06_water_v_x","class":"ALPHA_BLEND","draw_buffer":"XLU","z":[1,3,0],"alpha":[7,0,1,7,0],"blend":[1,4,5,3],"cull":0,"textures":[10],"texture_count":1,"texture_identities_complete":true},
+    {"id":13,"name":"cf_MA03_water01_v","class":"UNSUPPORTED_COMPLEX","draw_buffer":"XLU","z":[1,3,0],"alpha":[3,65,1,6,210],"blend":[1,4,1,3],"cull":0,"textures":[6,6],"texture_count":2,"texture_identities_complete":true},
+    {"id":14,"name":"cf_MA03_water02_v","class":"UNSUPPORTED_COMPLEX","draw_buffer":"XLU","z":[1,3,0],"alpha":[3,65,1,6,210],"blend":[1,4,1,3],"cull":2,"textures":[9,6],"texture_count":2,"texture_identities_complete":true},
+    {"id":15,"name":"cf_MA03_water02_v_x","class":"UNSUPPORTED_COMPLEX","draw_buffer":"XLU","z":[1,3,0],"alpha":[7,0,1,7,0],"blend":[1,4,1,3],"cull":0,"textures":[8,6],"texture_count":2,"texture_identities_complete":true},
+    {"id":16,"name":"cg_MA09_water_v","class":"MULTIPLY","draw_buffer":"XLU","z":[1,3,0],"alpha":[7,0,1,7,0],"blend":[1,2,0,3],"cull":0,"textures":[6,7,6],"texture_count":3,"texture_identities_complete":true},
+    {"id":17,"name":"ff_MA04_KiwaTuti_v_x","class":"ALPHA_BLEND","draw_buffer":"OPAQUE","z":[1,3,0],"alpha":[7,0,1,7,0],"blend":[1,4,5,3],"cull":2,"textures":[5,1],"texture_count":2,"texture_identities_complete":true},
+    {"id":18,"name":"gg_MA04_KiwaKusaA_v_x","class":"ALPHA_BLEND","draw_buffer":"OPAQUE","z":[1,3,0],"alpha":[7,0,1,7,0],"blend":[1,4,5,3],"cull":2,"textures":[4,1],"texture_count":2,"texture_identities_complete":true},
+    {"id":19,"name":"hh_MA04_KiwaKusaB_v_x","class":"ALPHA_BLEND","draw_buffer":"OPAQUE","z":[1,3,0],"alpha":[7,0,1,7,0],"blend":[1,4,5,3],"cull":2,"textures":[3,1],"texture_count":2,"texture_identities_complete":true},
+    {"id":20,"name":"jj_MA04_KiwaKabe_v_x","class":"ALPHA_BLEND","draw_buffer":"OPAQUE","z":[1,3,0],"alpha":[7,0,1,7,0],"blend":[1,4,5,3],"cull":2,"textures":[2,1],"texture_count":2,"texture_identities_complete":true},
+    {"id":21,"name":"ll_MA04_Kiwa_Mountain_v_x","class":"ALPHA_BLEND","draw_buffer":"OPAQUE","z":[1,3,0],"alpha":[7,0,1,7,0],"blend":[1,4,5,3],"cull":2,"textures":[0,1],"texture_count":2,"texture_identities_complete":true}
+  ]
+}
