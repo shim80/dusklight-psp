@@ -87,6 +87,75 @@ private:
     bool stopped_ = true;
 };
 
+enum class TevRegisterKind : std::uint8_t {
+    Color = 0,
+    Konst = 1,
+};
+
+struct TevRegisterValue {
+    std::uint16_t material;
+    TevRegisterKind kind;
+    std::uint8_t index;
+    float rgba[4];
+};
+
+struct BrkClipHandle {
+    playable::PackageView package;
+    std::uint32_t resource_id;
+    std::uint32_t frame_max;
+    std::uint32_t samples;
+    std::uint32_t channels;
+    std::uint32_t channel_offset;
+    std::uint32_t data_offset;
+    std::uint32_t data_size;
+    bool valid;
+};
+
+using TevRegisterSink = bool (*)(
+    void* user, const TevRegisterValue& value);
+
+class PspBrkPlayer {
+public:
+    bool initialize(
+        const playable::PackageView& package,
+        std::uint32_t resource_id, LoopMode loop_mode,
+        float speed, float start_frame, float end_frame);
+    bool change_clip(
+        const playable::PackageView& package,
+        std::uint32_t resource_id);
+    bool play();
+    bool set_speed(float speed);
+    bool set_frame(float frame);
+    bool set_loop_mode(LoopMode mode);
+    bool sample_channel(
+        std::uint16_t channel, TevRegisterValue* output);
+    bool apply(TevRegisterSink sink, void* user);
+
+    float frame() const;
+    float speed() const;
+    float start_frame() const;
+    float end_frame() const;
+    LoopMode loop_mode() const;
+    bool stopped() const;
+    const BrkClipHandle& clip() const;
+
+    Metrics metrics = {};
+
+private:
+    bool resolve_clip(
+        const playable::PackageView& package,
+        std::uint32_t resource_id, BrkClipHandle* output);
+    bool normalize_frame();
+
+    BrkClipHandle clip_ = {};
+    float frame_ = 0.0f;
+    float speed_ = 0.0f;
+    float start_ = 0.0f;
+    float end_ = 0.0f;
+    LoopMode loop_mode_ = LoopMode::Once;
+    bool stopped_ = true;
+};
+
 bool source_compatibility_surface_valid();
 
 }  // namespace dusk::psp::animation
