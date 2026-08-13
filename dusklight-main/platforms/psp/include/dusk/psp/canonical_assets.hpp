@@ -5,6 +5,13 @@
 
 namespace dusk::psp::game {
 
+struct CanonicalCommonAssets {
+    const char* link_model;
+    const char* link_textures;
+    const char* link_animations;
+    const char* hud_ui;
+};
+
 struct CanonicalRoomAssets {
     const char* model;
     const char* textures;
@@ -21,6 +28,8 @@ enum class CanonicalAssetError {
     NullOutput,
 };
 
+CanonicalAssetError resolve_canonical_common_assets(
+    CanonicalCommonAssets* output);
 CanonicalAssetError resolve_canonical_room_assets(
     const save::StartContext& start,
     CanonicalRoomAssets* output);
