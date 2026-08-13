@@ -4,6 +4,7 @@
 #include "dusk/psp/canonical_assets.hpp"
 #include "dusk/psp/canonical_common_loader.hpp"
 #include "dusk/psp/canonical_room_loader.hpp"
+#include "dusk/psp/first_playable_controls.hpp"
 #include "dusk/psp/platform.hpp"
 #include "dusk/psp/playable_render.hpp"
 #include "dusk/psp/playable_runtime.hpp"
@@ -415,11 +416,13 @@ int run_canonical_game() {
     static playable::Runtime link_runtime = {};
     static playable::RenderMetrics render_metrics = {};
     controls::MapperState mapper = {};
+    FirstPlayableControlProof control_proof = {};
     bool gameplay_active = false;
     bool actor_system_active = false;
     bool renderer_active = false;
     bool terminal_room_error = false;
     bool first_render_proven = false;
+    bool controls_proven = false;
     save::StartContext handoff = {};
 
     draw_file_select(
@@ -490,7 +493,10 @@ int run_canonical_game() {
                 &runtime,
                 playable::source_foot_motion_raw(link_runtime),
                 playable::source_old_frame_rate_next(link_runtime));
+            const room::RealRoomState state_before_input = runtime.state;
             room::update_real_room(&runtime, input, 1.0f / 30.0f);
+            observe_first_playable_controls(
+                &control_proof, input, state_before_input, runtime.state);
 
             actor::Context context = {};
             context.player_position = runtime.state.position;
@@ -535,6 +541,15 @@ int run_canonical_game() {
                         "stage=F_SP108 room=1 start=21 actors=9 "
                         "render=opaque_unlit frame=1");
                     first_render_proven = true;
+                    arm_first_playable_control_proof(
+                        &control_proof, runtime.state);
+                } else if (!controls_proven &&
+                           first_playable_controls_complete(control_proof)) {
+                    log(
+                        "DUSKLIGHT_PSP_FIRST_PLAYABLE_CONTROLS_OK "
+                        "stage=F_SP108 room=1 start=21 "
+                        "movement=1 camera=1 action=1 pause=1 resume=1");
+                    controls_proven = true;
                 }
             }
         }
