@@ -25,10 +25,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .work/recovered
-          git show 4df42572f9087472e3eb4891583971aad8dcff88:source-overlay/dusklight-psp-code-overlay.tar.gz.b64 \
-            | base64 -d \
-            | tar -xz -C .work/recovered
-          find .work/recovered -maxdepth 4 -type d -path '*/tools/*' -print | sort
+          git show 4df42572f9087472e3eb4891583971aad8dcff88:source-overlay/dusklight-psp-code-overlay.tar.gz.b64 > .work/overlay.tar.gz.b64
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          source = Path('.work/overlay.tar.gz.b64').read_bytes()
+          decoded = base64.b64decode(source, validate=False)
+          Path('.work/overlay.tar.gz').write_bytes(decoded)
+          print(f'encoded_bytes={len(source)} decoded_bytes={len(decoded)}')
+          assert decoded[:2] == b'\x1f\x8b', 'historical overlay is not gzip'
+          PY
+          tar -tzf .work/overlay.tar.gz >/dev/null
+          tar -xzf .work/overlay.tar.gz -C .work/recovered
+          find .work/recovered -maxdepth 5 -type d -path '*/tools/*' -print | sort
           PROBE_DIR="$(find .work/recovered -type d -path '*/tools/dusk_link_loader_probe' -print -quit)"
           BUILDER_DIR="$(find .work/recovered -type d -path '*/tools/dusk_startup_builder' -print -quit)"
           test -n "$PROBE_DIR"
