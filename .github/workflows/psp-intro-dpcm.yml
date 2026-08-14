@@ -20,12 +20,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake git curl xz-utils xvfb libgl1 libegl1 mesa-vulkan-drivers pulseaudio
 
-      - name: Verify DPCM parser semantics
+      - name: Verify DPCM and canonical startup asset semantics
         run: |
           cmake -S test/startup-camera-host -B .work/build/startup-camera-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build .work/build/startup-camera-host -j 4
           ./.work/build/startup-camera-host/startup_camera_host_test | tee .work/startup-camera-host.log
           grep -F 'STARTUP_CAMERA_TRACK_HOST_OK source_fps=30 source_frames=2 samples=3 crc_fail_closed=1' .work/startup-camera-host.log
+          cmake -S test/canonical-assets-host -B .work/build/canonical-assets-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/canonical-assets-host -j 4
+          ./.work/build/canonical-assets-host/canonical_assets_host_test | tee .work/canonical-assets-host.log
+          grep -F 'CANONICAL_STARTUP_ASSETS_HOST_OK paths=10 sequence=DPST ui=DPSU title=DPRM,DPTX,DPAN camera=DPCM fail_closed=1' .work/canonical-assets-host.log
 
       - name: Bootstrap pinned PSP toolchain and PPSSPP
         run: ./scripts/bootstrap-repro.sh
@@ -80,6 +84,7 @@ jobs:
             .work/canonical-eboot.sha256
             .work/canonical-objdump.log
             .work/startup-camera-host.log
+            .work/canonical-assets-host.log
             .work/ppsspp.log
             .work/xvfb.log
             .work/pulseaudio.log
