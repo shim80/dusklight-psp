@@ -24,6 +24,7 @@ cmake --build "$BUILDER_BUILD"
 
 PROBE="$PROJECT_ROOT/build/host/link-loader/probe/dusk_link_loader_probe"
 BUILDER="$BUILDER_BUILD/dusk_startup_builder"
+CAMERA_EXPORTER="$PROJECT_ROOT/tools/dusk_startup_camera_export.py"
 OUTPUT="$(assert_project_path "build/assets/dusklight-startup")"
 PASS1="$(assert_project_path "build/assets/dusklight-startup-pass1")"
 PASS2="$(assert_project_path "build/assets/dusklight-startup-pass2")"
@@ -94,6 +95,11 @@ convert_pass() {
     NO_PROXY= \
     "$PROBE" >"$destination/startup_ui.export.log"
   fi
+
+  python3 "$CAMERA_EXPORTER" \
+    "$DUSKLIGHT_GAME_IMAGE" "$destination/title_camera.dpcm" \
+    >"$destination/title_camera.export.log"
+
   env \
     DUSKLIGHT_GAME_IMAGE="$DUSKLIGHT_GAME_IMAGE" \
     DUSKLIGHT_FILE_SELECT_UI_EXPORT=1 \
@@ -131,6 +137,7 @@ convert_pass "$PASS2"
 FILES=(
   title_room.dprm title_room.dptx
   title_logo.dprm title_logo.dptx title_logo.dpan
+  title_camera.dpcm
   startup_logos.dpsu title_ui.dpsu file_select.dpsu
   fsp108_room.dprm fsp108_room.dptx
   fsp108_room.dpcl fsp108_room.dpsc
@@ -153,6 +160,10 @@ done
     "source_title_archive=/res/Object/TitlePal.arc" \
     "source_title_model_id=10" \
     "source_title_bck_id=7" \
+    "source_camera_archive=/res/Object/Demo38_01.arc" \
+    "source_camera_stb=evt/demo38_01.stb" \
+    "source_camera_fps=30" \
+    "source_camera_frames=2400" \
     "texture_max_dimension=128" \
     "deterministic=true" \
     "title_material_animation_status=unsupported_ids_13_16_19" \
@@ -176,4 +187,4 @@ cmake --build "$PROJECT_ROOT/build/host/canonical-runtime" \
   "$OUTPUT/file_select.dpsu"
 
 printf '%s\n' \
-  "DUSKLIGHT_STARTUP_ASSETS_OK deterministic=true files=${#FILES[@]} ui=DPSU1"
+  "DUSKLIGHT_STARTUP_ASSETS_OK deterministic=true files=${#FILES[@]} ui=DPSU1 camera=DPCM1"
