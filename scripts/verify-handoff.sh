@@ -17,6 +17,7 @@ for p in \
   toolchain/manifest.lock toolchain/REPRODUCIBLE_ENVIRONMENT.md \
   scripts/bootstrap-repro.sh scripts/assemble-source.sh \
   scripts/bootstrap-tools.sh scripts/bootstrap-tools.ps1 \
+  scripts/test-native-screenshots.sh \
   test/getawait-heart-probe/CMakeLists.txt test/getawait-heart-probe/main.cpp \
   test/chest-source-full/CMakeLists.txt test/chest-source-full/main.cpp \
   dusklight-main/platforms/psp/CMakeLists.txt; do
@@ -50,9 +51,11 @@ if missing:
     raise SystemExit('manifest missing tools: ' + ', '.join(missing))
 PY
 
-for s in scripts/bootstrap-repro.sh scripts/assemble-source.sh scripts/bootstrap-tools.sh scripts/verify-handoff.sh; do
+for s in scripts/bootstrap-repro.sh scripts/assemble-source.sh scripts/bootstrap-tools.sh scripts/test-native-screenshots.sh scripts/verify-handoff.sh; do
   bash -n "$s" || fail "bash syntax: $s"
 done
+
+scripts/test-native-screenshots.sh
 
 # Recovered historical campaign has no numbered report 11; that absence predates publication.
 for n in $(seq 0 193); do
