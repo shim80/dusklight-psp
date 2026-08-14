@@ -1,0 +1,27 @@
+name: Export pinned PPSSPP test runner
+
+on:
+  push:
+    branches:
+      - agent/intro-environment
+
+jobs:
+  export:
+    if: github.event.head_commit.message == 'Export pinned PPSSPP test runner'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download pinned PPSSPP
+        run: |
+          set -euo pipefail
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            -o PPSSPP-v1.20.4-anylinux-x86_64.AppImage \
+            https://github.com/hrydgard/ppsspp/releases/download/v1.20.4/PPSSPP-v1.20.4-anylinux-x86_64.AppImage
+          echo '661c098e6b7f7610171a57b7c533ce8bba6f2312b71e76d61e850461973eba21  PPSSPP-v1.20.4-anylinux-x86_64.AppImage' | sha256sum -c -
+      - name: Upload runner
+        uses: actions/upload-artifact@v4
+        with:
+          name: ppsspp-v1.20.4-test-runner
+          retention-days: 1
+          if-no-files-found: error
+          path: PPSSPP-v1.20.4-anylinux-x86_64.AppImage
