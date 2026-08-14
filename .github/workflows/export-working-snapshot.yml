@@ -29,7 +29,7 @@ jobs:
             0f8ef0a26f8507699eb667df4dd7c5563b5d0a3e \
             cf2b3f4302815cfd8c311ec035cf51b5fc8d6f36 \
             d287f93bdf592c8e5c3b31a37e12071c6be864b8 \
-            71cf86c1439187f5aeafbf0021eda890533aca5e
+            b1ae4a505613c57e9ebf68c707e4c81d91f9945c
           do
             curl -fsSL \
               -H "Authorization: Bearer $GH_TOKEN" \
@@ -38,7 +38,7 @@ jobs:
               | python3 -c 'import base64,json,sys; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["content"]))' \
               >> /tmp/pc-fidelity.patch
           done
-          sha256sum /tmp/pc-fidelity.patch
+          echo 'adfbe7cf0aab0bcfd06beea9cc8ef220bc029103a731021e0b64afc834adce55  /tmp/pc-fidelity.patch' | sha256sum -c -
           git apply --check /tmp/pc-fidelity.patch
           git apply /tmp/pc-fidelity.patch
       - name: Validate source-safe contracts
