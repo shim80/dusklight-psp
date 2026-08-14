@@ -10,6 +10,23 @@ Doors, chests, item-get, inventory updates, room handoffs, object persistence, p
 
 Immediate milestone: complete the Heart Piece chest event end-to-end using the validated GETA/GETAWAIT presentation.
 
+### PSP performance lane (does not override gameplay priority)
+
+Performance work is accepted only when it preserves source/gameplay behavior and has a measured bottleneck. The current reference study is `docs/reports/202-daedalus-x64-psp-rendering-performance-research.md`, anchored to DaedalusX64 commit `4f5c6fb045358044b64173fac619db5496cc2328`.
+
+Adoption order:
+
+1. compile supported source J3D/TEV material expressions into explicit bounded PSP GU pass plans; this is also a current F_SP102 correctness need;
+2. extend runtime counters for texture residency/uploads, GU state emission, material passes, package I/O and GE wait time;
+3. move immutable texture work to deterministic host conversion: target PSP format, swizzle and approved resolution/fallback classification;
+4. replace monotonic room-texture EDRAM ownership with a reclaimable texture-residency cache using explicit lifetimes, pinning and measured RAM fallback;
+5. add an applied GU-state cache that skips only proven redundant calls while keeping pass-boundary state deterministic;
+6. add source-informed package prefetch for known transitions if transition I/O is a measured stall;
+7. benchmark double command-list submission and VFPU kernels only after profiling identifies relevant CPU/GE time;
+8. experiment with the Media Engine only through an optional job queue with a CPU fallback, preferably for audio or pure data work first. Render correctness and gameplay logic must never depend on ME availability.
+
+Commercial-derived packages remain local. Runtime or host optimizations must keep deterministic package generation, host tests, Allegrex builds and PPSSPP/real-hardware validation where applicable.
+
 ## P2 — UI and progression systems
 
 Pause/inventory, item assignment, maps, dungeon state, keys, boss keys, wallets/collectibles, message UI and file/save flow.
