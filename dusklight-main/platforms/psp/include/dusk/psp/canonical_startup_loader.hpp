@@ -4,6 +4,7 @@
 #include "dusk/psp/canonical_assets.hpp"
 #include "dusk/psp/playable_package.hpp"
 #include "dusk/psp/room_package.hpp"
+#include "dusk/psp/startup_camera_track.hpp"
 #include "dusk/psp/startup_package.hpp"
 #include "dusk/psp/startup_ui_package.hpp"
 
@@ -35,6 +36,12 @@ struct OwnedStartupAnimation {
     playable::PackageView view;
 };
 
+struct OwnedStartupCamera {
+    std::uint8_t* bytes;
+    std::uint32_t size;
+    camera::TrackView view;
+};
+
 struct CanonicalStartupPackages {
     OwnedStartupSequence sequence;
     OwnedStartupUi logos_ui;
@@ -45,6 +52,7 @@ struct CanonicalStartupPackages {
     OwnedStartupRoomPackage title_logo_model;
     OwnedStartupRoomPackage title_logo_textures;
     OwnedStartupAnimation title_logo_animation;
+    OwnedStartupCamera title_camera;
 };
 
 enum class CanonicalStartupLoadError : std::uint8_t {
@@ -64,6 +72,7 @@ enum class CanonicalStartupLoadError : std::uint8_t {
     TitleLogoModelPackage,
     TitleLogoTexturePackage,
     TitleLogoAnimationPackage,
+    TitleCameraPackage,
 };
 
 CanonicalStartupLoadError load_canonical_startup_packages(
