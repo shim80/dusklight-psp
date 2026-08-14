@@ -1,6 +1,6 @@
 # Dusklight PSP — current status
 
-Updated: 2026-08-13
+Updated: 2026-08-14
 
 ## Project direction
 
@@ -118,6 +118,18 @@ This is intentional while gameplay coverage remains incomplete.
 Repository `screenshot/` is reserved for source-faithful game UI or visible asset-backed gameplay. Text-only diagnostics, synthetic/public probes, boot screens and technical framebuffer captures remain CI evidence only.
 
 The first accepted asset-backed gameplay capture is now `screenshot/dusklight-psp-f-sp108-gameplay.jpg`.
+
+## F_SP102 startup environment checkpoint
+
+Draft PR #12 (`Render complete F_SP102 startup environment`) is based directly on current `main` and remains intentionally unmerged until asset-backed visual acceptance.
+
+The source-safe exporter combines the five F_SP102 room BMDs and four stage/sky BMDs into the existing DPRM/DPTX v2 runtime contract. Two independent local exports are byte-identical: 24,263 vertices, 21,513 triangles, 46 submeshes, 46 materials, 34 textures and 565,888 texture bytes. The generated commercial-derived packages remain local.
+
+GitHub Actions run `31776948473` on commit `f5dac2ed771b5979a123a80b9ee2b37e6c18e495` is green for exporter/contract checks, pinned PSP toolchain bootstrap, Allegrex build, `mips:allegrex` verification and pinned PPSSPP smoke. Exact EBOOT SHA-256: `5ce0e73926752643670ab0a25b3d0fc872772883d365aaeeb33180061df1fb96`.
+
+The canonical startup room paths now resolve to `data/startup/fsp102_environment.dprm` and `data/startup/fsp102_environment.dptx`. The progressive-scan startup segment also uses DPSU channel 3 instead of reusing the warning channel 0.
+
+Visual acceptance is still open because the previously materialized startup asset bundle is not present in the current local runtime. Do not merge PR #12 or publish a release based only on the public smoke.
 
 ## Active task
 

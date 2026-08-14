@@ -121,6 +121,16 @@ Keep the first-playable renderer deliberately conservative while gameplay is inc
 
 Do not spend the next checkpoint on graphical polish.
 
+## 7a. Current startup cinematic checkpoint
+
+PR #12 (`Render complete F_SP102 startup environment`) is the current intro branch. It keeps commercial-derived output local and adds only the deterministic exporter/bootstrap/build tooling plus the runtime asset-path contract.
+
+Validated local export metrics: 24,263 vertices, 21,513 triangles, 46 submeshes, 46 materials, 34 textures, 565,888 texture bytes. DPRM SHA-256 `019f68147a24f51c72fe1f6410fe2f890de992261673a24134bdd8c7d639c6e9`; DPTX SHA-256 `cc025e6607c50b71ae00700ab68c81665a499418f56736457099c7a75e1dde0b`.
+
+Public checkpoint run `31776948473` on `f5dac2ed771b5979a123a80b9ee2b37e6c18e495` is fully green. Exact EBOOT SHA-256: `5ce0e73926752643670ab0a25b3d0fc872772883d365aaeeb33180061df1fb96`.
+
+The branch now expects `data/startup/fsp102_environment.dprm/.dptx` under the source `demo38_01` DPCM camera. Keep PR #12 draft until that exact EBOOT is replayed with the complete startup asset set and a meaningful cinematic/title framebuffer is visually accepted.
+
 ## 8. Immediate next work
 
 1. finish deterministic asset-backed control acceptance in F_SP108 for camera, source-prompt Cross action, START pause and resume;
