@@ -1,0 +1,34 @@
+name: Export pinned gclib source temp
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/intro-fsp102-environment-mainline
+    paths:
+      - .github/workflows/export-gclib-pinned-temp.yml
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+      - name: Export pinned gclib
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit=64127742467acb633d51685b9b1798ab45bb4034
+          git clone --filter=blob:none https://github.com/LagoLunatic/gclib.git gclib
+          git -C gclib checkout --detach "$commit"
+          test "$(git -C gclib rev-parse HEAD)" = "$commit"
+          test -z "$(git -C gclib status --short)"
+          tar -C gclib -czf "gclib-${commit}.tar.gz" --exclude=.git .
+          sha256sum "gclib-${commit}.tar.gz" > gclib-source.sha256
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gclib-6412774-source-temp
+          path: |
+            gclib-64127742467acb633d51685b9b1798ab45bb4034.tar.gz
+            gclib-source.sha256
+          if-no-files-found: error
+          retention-days: 1
