@@ -52,9 +52,9 @@ int main() {
                 "title_ui_path") ||
         !expect(std::strcmp(startup.file_select_ui, "data/startup/file_select.dpsu") == 0,
                 "file_select_ui_path") ||
-        !expect(std::strcmp(startup.title_room_model, "data/startup/title_room.dprm") == 0,
+        !expect(std::strcmp(startup.title_room_model, "data/startup/fsp102_environment.dprm") == 0,
                 "title_room_model_path") ||
-        !expect(std::strcmp(startup.title_room_textures, "data/startup/title_room.dptx") == 0,
+        !expect(std::strcmp(startup.title_room_textures, "data/startup/fsp102_environment.dptx") == 0,
                 "title_room_texture_path") ||
         !expect(std::strcmp(startup.title_logo_model, "data/startup/title_logo.dprm") == 0,
                 "title_logo_model_path") ||

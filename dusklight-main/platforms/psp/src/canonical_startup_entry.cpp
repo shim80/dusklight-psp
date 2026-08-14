@@ -283,8 +283,10 @@ bool render_logo_segment(
     std::uint16_t channel = 0;
     switch (segment) {
     case startup::Segment::BootWarning:
-    case startup::Segment::ProgressivePrompt:
         channel = 0;
+        break;
+    case startup::Segment::ProgressivePrompt:
+        channel = 3;
         break;
     case startup::Segment::NintendoLogo:
         channel = 1;
