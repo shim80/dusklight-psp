@@ -162,8 +162,7 @@ def main(root:Path,outdir:Path):
       return texkey_to_id[key]
     white_id=add_img(Image.new('RGBA',(1,1),(255,255,255,255)))
     for label,b,_,m in materials:
-      ti=next((x for x in m.textures if x is not None),None)
-      if ti is not None:
+      for ti in (x for x in m.textures if x is not None):
        key=(label,ti)
        if key not in source_tex_map:source_tex_map[key]=add_img(b.tex1.textures[ti].render())
 
@@ -219,27 +218,50 @@ def main(root:Path,outdir:Path):
       struct.pack_into('<IIHHBBHHBB',dprm,q,first,count,mat,tex,buck,0,shape,src,flags,df);q+=48
     struct.pack_into('<I',dprm,8,len(dprm));struct.pack_into('<I',dprm,12,crc(dprm))
 
-    # DPTX v2 + PEV1 source material state.
-    th=128;tt=th;mt=align(tt+len(textures)*48,16);st=align(mt+len(materials)*32,16);pix=align(st+len(materials)*40,16)
-    total_tex=sum(t[3]*t[2]*2 for t in textures);dptx=bytearray(pix+total_tex);dptx[:4]=b'DPTX';struct.pack_into('<HH',dptx,4,2,128)
-    struct.pack_into('<IIIIII',dptx,16,len(textures),len(materials),tt,48,mt,32);struct.pack_into('<I',dptx,48,total_tex);dptx[64:68]=b'PEV1';struct.pack_into('<IIII',dptx,68,st,40,len(materials),1)
+    # DPTX v3: PEV1 source PE state + MPV1 bounded PSP material passes.
+    th=128;tt=th;mt=align(tt+len(textures)*48,16);st=align(mt+len(materials)*32,16);pt=align(st+len(materials)*40,16);pix=align(pt+len(materials)*48,16)
+    total_tex=sum(t[3]*t[2]*2 for t in textures);dptx=bytearray(pix+total_tex);dptx[:4]=b'DPTX';struct.pack_into('<HH',dptx,4,3,128)
+    struct.pack_into('<IIIIII',dptx,16,len(textures),len(materials),tt,48,mt,32);struct.pack_into('<I',dptx,48,total_tex)
+    dptx[64:68]=b'PEV1';struct.pack_into('<IIII',dptx,68,st,40,len(materials),1)
+    dptx[84:88]=b'MPV1';struct.pack_into('<IIII',dptx,88,pt,48,len(materials),1)
     po=pix
     for tid,t in enumerate(textures):
       w,h,sw,sh,fmt,data,_=t;struct.pack_into('<IHHHHB',dptx,tt+tid*48,tid,w,h,sw,sh,fmt);struct.pack_into('<II',dptx,tt+tid*48+16,po,len(data));dptx[po:po+len(data)]=data;po+=len(data)
+    exact=approximate=unsupported=planned_passes=0
     for gid,(label,b,mi,m) in enumerate(materials):
       source_ids=[x for x in m.textures if x is not None]
-      primary=source_tex_map[(label,source_ids[0])] if source_ids else white_id
-      tids=[primary] + [0xffff] * (min(len(source_ids),8)-1) if source_ids else []
+      runtime_ids=[source_tex_map[(label,ti)] for ti in source_ids]
+      primary=runtime_ids[0] if runtime_ids else white_id
       klass=mat_class(m);bucket=0 if klass==0 else 1 if klass==1 else 2
       struct.pack_into('<HBB',dptx,mt+gid*32,primary,bucket,0)
-      c=m.material_colors[0];rgba=(c.r,c.g,c.b,c.a) if c else (255,255,255,255);struct.pack_into('<I',dptx,mt+gid*32+4,color32(rgba))
+      c=m.material_colors[0];rgba=(c.r,c.g,c.b,c.a) if c else (255,255,255,255);material_color=color32(rgba);struct.pack_into('<I',dptx,mt+gid*32+4,material_color)
       ac=m.alpha_compare;z=m.z_mode;bl=m.blend_mode;off=st+gid*40
-      struct.pack_into('<H',dptx,off,gid);dptx[off+2]=klass;dptx[off+3]=0 if bucket==0 else 1;dptx[off+4]=int(z.depth_test);dptx[off+5]=z.depth_func.value;dptx[off+6]=int(z.depth_write);dptx[off+7]=m.cull_mode.value;dptx[off+8]=ac.comp0.value;dptx[off+9]=ac.ref0;dptx[off+10]=ac.operation.value;dptx[off+11]=ac.comp1.value;dptx[off+12]=ac.ref1;dptx[off+13]=bl.mode.value;dptx[off+14]=bl.source_factor.value;dptx[off+15]=bl.destination_factor.value;dptx[off+16]=bl.logic_op.value;dptx[off+17]=len(tids);dptx[off+18]=0;dptx[off+19]=1
-      for j in range(8):struct.pack_into('<H',dptx,off+20+j*2,tids[j] if j<len(tids) else 0xffff)
-    struct.pack_into('<I',dptx,8,len(dptx));struct.pack_into('<I',dptx,12,crc(dptx))
+      struct.pack_into('<H',dptx,off,gid);dptx[off+2]=klass;dptx[off+3]=0 if bucket==0 else 1;dptx[off+4]=int(z.depth_test);dptx[off+5]=z.depth_func.value;dptx[off+6]=int(z.depth_write);dptx[off+7]=m.cull_mode.value;dptx[off+8]=ac.comp0.value;dptx[off+9]=ac.ref0;dptx[off+10]=ac.operation.value;dptx[off+11]=ac.comp1.value;dptx[off+12]=ac.ref1;dptx[off+13]=bl.mode.value;dptx[off+14]=bl.source_factor.value;dptx[off+15]=bl.destination_factor.value;dptx[off+16]=bl.logic_op.value;dptx[off+17]=min(len(runtime_ids),8);dptx[off+18]=1;dptx[off+19]=1
+      for j in range(8):struct.pack_into('<H',dptx,off+20+j*2,runtime_ids[j] if j<len(runtime_ids) and j<8 else 0xffff)
 
+      # The PSP plan is deliberately bounded to two passes. It preserves all
+      # source texture identities in PEV1 and reports approximations instead
+      # of silently claiming TEV parity when the source combiner is richer.
+      stages=[stage for stage in getattr(m,'tev_stages',[]) if stage is not None]
+      stage_count=len(stages) if stages else (1 if runtime_ids else 0)
+      if len(runtime_ids)<=1 and stage_count<=1:
+        fidelity,reason=0,0; exact+=1
+      elif len(runtime_ids)<=2 and stage_count<=2:
+        fidelity,reason=1,3; approximate+=1
+      else:
+        fidelity,reason=2,1; unsupported+=1
+      pass_ids=runtime_ids[:2] if runtime_ids else [white_id]
+      pass_count=len(pass_ids); planned_passes+=pass_count
+      poff=pt+gid*48;struct.pack_into('<HBBBB',dptx,poff,gid,fidelity,reason,pass_count,0)
+      # pass 0: source blend/PE policy, depth write follows source.
+      p0=poff+8;struct.pack_into('<HBBBB',dptx,p0,pass_ids[0],0,1,0,(1 if z.depth_write else 0)|2);struct.pack_into('<I',dptx,p0+8,0xffffffff)
+      if pass_count>1:
+        # pass 1 approximates common two-texture TEV modulation by multiplying
+        # the second texture over the first, without touching depth.
+        p1=poff+28;struct.pack_into('<HBBBB',dptx,p1,pass_ids[1],1,1,4,2);struct.pack_into('<I',dptx,p1+8,0xffffffff)
+    struct.pack_into('<I',dptx,8,len(dptx));struct.pack_into('<I',dptx,12,crc(dptx))
     (outdir/'fsp102_environment.dprm').write_bytes(dprm);(outdir/'fsp102_environment.dptx').write_bytes(dptx)
-    manifest=f'vertices={len(vertices)}\ntriangles={len(indices)//3}\nsubmeshes={len(submeshes)}\nmaterials={len(materials)}\ntextures={len(textures)}\ntexture_bytes={total_tex}\ndprm_bytes={len(dprm)}\ndptx_bytes={len(dptx)}\n'
+    manifest=f'vertices={len(vertices)}\ntriangles={len(indices)//3}\nsubmeshes={len(submeshes)}\nmaterials={len(materials)}\ntextures={len(textures)}\ntexture_bytes={total_tex}\nmaterial_passes={planned_passes}\nmaterial_exact={exact}\nmaterial_approximate={approximate}\nmaterial_unsupported={unsupported}\ndprm_bytes={len(dprm)}\ndptx_bytes={len(dptx)}\n'
     (outdir/'FSP102_ENVIRONMENT.MANIFEST').write_text(manifest)
     print(manifest,end='');print('dprm_sha256='+hashlib.sha256(dprm).hexdigest());print('dptx_sha256='+hashlib.sha256(dptx).hexdigest())
 if __name__=='__main__':main(Path(sys.argv[1]),Path(sys.argv[2]))

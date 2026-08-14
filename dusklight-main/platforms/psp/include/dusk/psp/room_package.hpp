@@ -71,6 +71,58 @@ struct AlphaMaterialState {
     std::uint16_t texture_ids[8];
 };
 
+enum class MaterialPassFidelity : std::uint8_t {
+    Exact = 0,
+    Approximate = 1,
+    Unsupported = 2,
+};
+
+enum class MaterialFallbackReason : std::uint8_t {
+    None = 0,
+    TooManyTevStages = 1,
+    UnsupportedTexgen = 2,
+    UnsupportedTevOperation = 3,
+    UnsupportedBlend = 4,
+    MissingTextureIdentity = 5,
+};
+
+enum class MaterialTextureEffect : std::uint8_t {
+    Modulate = 0,
+    Replace = 1,
+    Add = 2,
+};
+
+enum class MaterialColorSource : std::uint8_t {
+    TextureRgb = 0,
+    Rgba = 1,
+};
+
+enum class MaterialBlendPolicy : std::uint8_t {
+    Source = 0,
+    Alpha = 1,
+    Additive = 2,
+    Screen = 3,
+    Multiply = 4,
+};
+
+struct MaterialPass {
+    std::uint16_t texture_id;
+    MaterialTextureEffect texture_effect;
+    MaterialColorSource color_source;
+    MaterialBlendPolicy blend;
+    bool depth_write;
+    bool use_texture;
+    std::uint32_t color;
+};
+
+struct MaterialPassPlan {
+    std::uint16_t source_material_id;
+    MaterialPassFidelity fidelity;
+    MaterialFallbackReason reason;
+    std::uint8_t pass_count;
+    MaterialPass passes[2];
+};
+
 constexpr std::uint8_t alpha_material_bucket(AlphaMaterialClass value) {
     return value == AlphaMaterialClass::Opaque
         ? 0
@@ -174,6 +226,10 @@ PackageError read_room_alpha_material_state(
     const PackageView& view,
     std::uint16_t material_id,
     AlphaMaterialState* state);
+PackageError read_room_material_pass_plan(
+    const PackageView& view,
+    std::uint16_t material_id,
+    MaterialPassPlan* plan);
 PackageError validate_dpcl(
     const void* bytes, std::uint32_t size, PackageView* view);
 PackageError validate_dpsc(

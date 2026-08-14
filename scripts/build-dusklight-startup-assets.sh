@@ -16,14 +16,6 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 "$SCRIPT_DIR/verify-link-loader-sources.sh"
 "$SCRIPT_DIR/build-link-loader-probe.sh"
 
-BUILDER_BUILD="$(assert_project_path "build/host/startup-builder")"
-safe_mkdir "$BUILDER_BUILD"
-cmake -S "$PROJECT_ROOT/tools/dusk_startup_builder" \
-  -B "$BUILDER_BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build "$BUILDER_BUILD"
-
-PROBE="$PROJECT_ROOT/build/host/link-loader/probe/dusk_link_loader_probe"
-BUILDER="$BUILDER_BUILD/dusk_startup_builder"
 OUTPUT="$(assert_project_path "build/assets/dusklight-startup")"
 PASS1="$(assert_project_path "build/assets/dusklight-startup-pass1")"
 PASS2="$(assert_project_path "build/assets/dusklight-startup-pass2")"
@@ -94,6 +86,7 @@ convert_pass() {
     NO_PROXY= \
     "$PROBE" >"$destination/startup_ui.export.log"
   fi
+  python3 "$PROJECT_ROOT/tools/startup_logo_ui_export.py"     "$destination/startup_logos.dpsu"     >"$destination/team_logo.export.log"
   env \
     DUSKLIGHT_GAME_IMAGE="$DUSKLIGHT_GAME_IMAGE" \
     DUSKLIGHT_FILE_SELECT_UI_EXPORT=1 \
@@ -121,8 +114,7 @@ convert_pass() {
     ALL_PROXY=http://127.0.0.1:9 \
     NO_PROXY= \
     "$PROBE" >"$destination/fsp108.export.log"
-  "$BUILDER" "$destination/startup.dpst" \
-    >"$destination/startup.export.log"
+  python3 "$PROJECT_ROOT/tools/startup_sequence_export.py"     "$destination/startup.dpst"     >"$destination/startup.export.log"
 }
 
 convert_pass "$PASS1"
@@ -157,8 +149,7 @@ done
     "deterministic=true" \
     "title_material_animation_status=unsupported_ids_13_16_19" \
     "startup_ui_status=converted_dpsu1" \
-    "startup_warning_source=/res/Layout/LogoPalFr.arc" \
-    "startup_title_message=Appuyez sur START" \
+    "startup_pretitle=dusklight_team_logo_original"     "startup_removed=warning,nintendo,dolby,progressive,opening_realtime"     "startup_title_message=Appuyez sur START" \
     "first_playable_stage=F_SP108" \
     "first_playable_room=1" \
     "first_playable_start=21" \

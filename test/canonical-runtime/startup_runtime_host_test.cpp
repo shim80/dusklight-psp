@@ -70,7 +70,7 @@ Fixture make_fixture() {
         fixture.data() + 20,
         dusk::psp::startup::kSegmentRecordBytes);
     set_record(
-        fixture, 0, Segment::BootWarning,
+        fixture, 0, Segment::TeamLogo,
         AdvancePolicy::TimedOrInput, Completeness::Complete,
         3510, dusk::psp::startup::Capability::Ui, 0x4C4F474Fu);
     set_record(
@@ -119,15 +119,15 @@ int main() {
 
     SegmentRecord record = {};
     assert(package.segment(0, &record));
-    assert(record.segment == Segment::BootWarning);
+    assert(record.segment == Segment::TeamLogo);
     assert(record.duration_frames == 3510);
-    assert(std::strcmp(segment_name(record.segment), "boot_warning") == 0);
+    assert(std::strcmp(segment_name(record.segment), "team_logo") == 0);
 
     StartupRuntime runtime;
     const std::uint32_t available =
         Capability::Ui | Capability::Stage;
     assert(runtime.initialize(package, available));
-    assert(runtime.current_segment() == Segment::BootWarning);
+    assert(runtime.current_segment() == Segment::TeamLogo);
     assert(runtime.tick({true, false}, false));
     assert(runtime.current_segment() == Segment::NintendoLogo);
     for (std::uint32_t frame = 0; frame < 89; ++frame) {
@@ -169,7 +169,7 @@ int main() {
         invalid.data(), invalid.size(), &package) ==
         PackageError::CrcMismatch);
     invalid = fixture;
-    invalid[64 + 32] = static_cast<std::uint8_t>(Segment::BootWarning);
+    invalid[64 + 32] = static_cast<std::uint8_t>(Segment::TeamLogo);
     refresh_crc(invalid);
     assert(validate_startup_package(
         invalid.data(), invalid.size(), &package) ==
@@ -186,6 +186,6 @@ int main() {
 
     std::puts(
         "STARTUP_RUNTIME_HOST_OK format=DPST1 segments=6 "
-        "source_timers=3510,90 deterministic=true negatives=5");
+        "team_logo_timer=3510 legacy_logo_timer=90 deterministic=true negatives=5");
     return 0;
 }

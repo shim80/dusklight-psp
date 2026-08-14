@@ -1002,6 +1002,53 @@ void bind_room_texture(std::uint16_t texture) {
     bind(g_room_textures[texture < count ? texture : 0]);
 }
 
+void apply_material_pass_state(
+    const room::MaterialPass& pass, bool preserve_source_blend) {
+    if (pass.use_texture) {
+        bind_room_texture(pass.texture_id);
+        const int effect =
+            pass.texture_effect == room::MaterialTextureEffect::Replace
+                ? GU_TFX_REPLACE
+                : pass.texture_effect == room::MaterialTextureEffect::Add
+                    ? GU_TFX_ADD
+                    : GU_TFX_MODULATE;
+        sceGuTexFunc(effect, GU_TCC_RGBA);
+    } else {
+        sceGuDisable(GU_TEXTURE_2D);
+    }
+    sceGuColor(pass.color);
+    if (preserve_source_blend &&
+        pass.blend == room::MaterialBlendPolicy::Source) {
+        return;
+    }
+    switch (pass.blend) {
+    case room::MaterialBlendPolicy::Source:
+        sceGuDisable(GU_BLEND);
+        break;
+    case room::MaterialBlendPolicy::Alpha:
+        sceGuEnable(GU_BLEND);
+        sceGuBlendFunc(
+            GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+        break;
+    case room::MaterialBlendPolicy::Additive:
+        sceGuEnable(GU_BLEND);
+        sceGuBlendFunc(
+            GU_ADD, GU_SRC_ALPHA, GU_FIX, 0, 0xffffffffu);
+        break;
+    case room::MaterialBlendPolicy::Screen:
+        sceGuEnable(GU_BLEND);
+        sceGuBlendFunc(
+            GU_ADD, GU_FIX, GU_ONE_MINUS_OTHER_COLOR,
+            0xffffffffu, 0);
+        break;
+    case room::MaterialBlendPolicy::Multiply:
+        sceGuEnable(GU_BLEND);
+        sceGuBlendFunc(
+            GU_ADD, GU_OTHER_COLOR, GU_FIX, 0, 0x00000000u);
+        break;
+    }
+}
+
 void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
     const std::uint32_t section_table = read_u32(g_room_model + 72);
     const std::uint8_t* vertex_section = g_room_model + section_table;
@@ -1045,24 +1092,46 @@ void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
         if (alpha_state.cull_exact) {
             ++metrics->room_cull_exact_draws;
         }
-        sceGuDepthMask(source_depth_write ? GU_FALSE : GU_TRUE);
-        const std::uint16_t texture = read_u16(item + 10);
-        bind_room_texture(texture);
-        sceGuShadeModel(GU_SMOOTH);
-        sceGumDrawArray(
-            GU_TRIANGLES,
-            GU_TEXTURE_32BITF | GU_COLOR_8888 |
-                GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
-            read_u32(item + 4),
-            indices + read_u32(item) * 2,
-            vertices);
-        trace_render_submission(
-            render_trace::Source::Room, trace_bucket(wanted), 0,
-            source_material, read_u16(item + 14), texture,
-            source_depth_write, alpha_state.culling,
-            metrics->environment_fog_enabled, false,
-            alpha_state.alpha_reference);
-        ++metrics->room_draw_calls;
+        const std::uint16_t fallback_texture = read_u16(item + 10);
+        const room::PackageView texture_package = {
+            g_room_texture_package.bytes, g_room_texture_package.size,
+            g_room_texture_package.expected_crc,
+            g_room_texture_package.actual_crc};
+        room::MaterialPassPlan plan = {};
+        const bool has_plan = room::read_room_material_pass_plan(
+            texture_package, source_material, &plan) == room::PackageError::Ok;
+        const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
+        for (std::uint32_t pass_index = 0;
+             pass_index < pass_count; ++pass_index) {
+            room::MaterialPass fallback_pass = {};
+            fallback_pass.texture_id = fallback_texture;
+            fallback_pass.texture_effect = room::MaterialTextureEffect::Modulate;
+            fallback_pass.color_source = room::MaterialColorSource::Rgba;
+            fallback_pass.blend = room::MaterialBlendPolicy::Source;
+            fallback_pass.depth_write = source_depth_write;
+            fallback_pass.use_texture = true;
+            fallback_pass.color = 0xffffffffu;
+            const room::MaterialPass& pass =
+                has_plan ? plan.passes[pass_index] : fallback_pass;
+            sceGuDepthMask(pass.depth_write ? GU_FALSE : GU_TRUE);
+            apply_material_pass_state(pass, pass_index == 0);
+            sceGuShadeModel(GU_SMOOTH);
+            sceGumDrawArray(
+                GU_TRIANGLES,
+                GU_TEXTURE_32BITF | GU_COLOR_8888 |
+                    GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
+                read_u32(item + 4),
+                indices + read_u32(item) * 2,
+                vertices);
+            trace_render_submission(
+                render_trace::Source::Room, trace_bucket(wanted), 0,
+                source_material, read_u16(item + 14),
+                pass.use_texture ? pass.texture_id : 0xffffu,
+                pass.depth_write, alpha_state.culling,
+                metrics->environment_fog_enabled, false,
+                alpha_state.alpha_reference);
+            ++metrics->room_draw_calls;
+        }
         if (wanted == 0) {
             ++metrics->room_opaque_draws;
         } else if (wanted == 1) {
@@ -2276,15 +2345,23 @@ bool render_startup_title_frame(
     sceGumLookAt(&eye, &center, &up);
     configure_environment(input, metrics);
     draw_room_bucket(0, metrics);
-    if (draw_title_model) {
-        draw_static_model_bucket(title_model, 0xfffeu, 0, metrics);
-    }
     draw_room_bucket(1, metrics);
-    if (draw_title_model) {
-        draw_static_model_bucket(title_model, 0xfffeu, 1, metrics);
-    }
     draw_room_bucket(2, metrics);
     if (draw_title_model) {
+        // Source Item3D camera used by daTitle_c::Draw. Keep the F_SP102
+        // environment on its own source camera, then draw the title model
+        // through the dedicated Item3D view instead of billboarding it.
+        sceGumMatrixMode(GU_PROJECTION);
+        sceGumLoadIdentity();
+        sceGumPerspective(45.0f, 480.0f / 272.0f, 1.0f, 100000.0f);
+        ScePspFVector3 title_eye = {0.0f, 0.0f, -1000.0f};
+        ScePspFVector3 title_center = {0.0f, 0.0f, 0.0f};
+        ScePspFVector3 title_up = {0.0f, 1.0f, 0.0f};
+        sceGumMatrixMode(GU_VIEW);
+        sceGumLoadIdentity();
+        sceGumLookAt(&title_eye, &title_center, &title_up);
+        draw_static_model_bucket(title_model, 0xfffeu, 0, metrics);
+        draw_static_model_bucket(title_model, 0xfffeu, 1, metrics);
         draw_static_model_bucket(title_model, 0xfffeu, 2, metrics);
     }
     if (ui_channel != 0xffffu) {
