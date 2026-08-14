@@ -131,23 +131,46 @@ The canonical startup room paths now resolve to `data/startup/fsp102_environment
 
 Visual acceptance is still open because the previously materialized startup asset bundle is not present in the current local runtime. Do not merge PR #12 or publish a release based only on the public smoke.
 
+## PSP PC-fidelity/startup checkpoint
+
+Branch `agent/psp-pc-fidelity-startup` resumes the recovered F_SP102 material-pass/title checkpoint on top of the PR #12 branch and changes the rendering direction toward bounded PSP fidelity rather than a single-texture approximation.
+
+The DPTX contract is now v3 with `MPV1` material plans, capped at two GU passes per source material. The renderer applies per-pass texture selection, texture effect, blend policy and depth-write state. Recovered F_SP102 export metrics are 24,348 vertices, 21,513 triangles, 46 submeshes/materials, 40 textures, 656,128 texture bytes and 48 planned passes, classified as 2 exact, 41 approximate and 3 unsupported.
+
+The title no longer uses the arbitrary 3000-unit billboard placement. It uses the source Item3D camera path with 45-degree FOV, eye `(0,0,-1000)`, title translation `(0,0,-430)` and mirrored X.
+
+Generated startup is reduced to:
+
+`Dusklight team logo -> F_SP102 title -> START -> file select/save -> gameplay`
+
+Nintendo, Dolby, warning, progressive and realtime opening replay are no longer emitted by the new startup exporter. PSP controller mapping remains unchanged.
+
+GitHub Actions run `31819052956` is green for MPV1 host validation, reduced startup runtime/export validation, pinned PSPDEV/PPSSPP bootstrap and a full Allegrex link. EBOOT SHA-256: `9f3ec5f9a937c694ae1e3b4be1a37468037652c4e54b86f8c95d9f9278345eca`. Proof artifact ID: `9226218542`.
+
+This checkpoint does **not** close visual parity. The current execution environment does not expose the Twilight Princess ISO or Dusklight PC runtime/assets, so no new asset-backed PSP-vs-PC screenshot comparison was performed. Water/fog/background/F_SP108 tuning, UV/clamp/pass-order fixes driven by captures, and BPK/BRK/BTK material animation remain open.
+
+Detailed report: `docs/reports/205-psp-pc-fidelity-startup-checkpoint.md`.
+
 ## Active task
 
-Close the first release path in the canonical EBOOT:
+Close the first release path in the canonical EBOOT while increasing visible fidelity where the source assets are available:
 
-`intro/opening -> title -> file select -> create/load persistent slot -> NewGameTransition -> F_SP108 first playable -> PSP controls`
+`Dusklight logo -> title -> START -> file select/save -> F_SP108 first playable -> PSP controls`
 
-Immediate gameplay-first target:
+Immediate targets:
 
-1. finish asset-backed acceptance of camera, source-prompt Cross action, START pause and resume in actual F_SP108;
-2. preserve the already-proven visible room+Link path;
-3. replace the synthetic/public startup presentation with the packaged source-faithful startup assets already present in the workspace;
-4. replay the complete startup/title/save/F_SP108 route in one EBOOT;
-5. only then promote the startup branch toward merge/release readiness.
+1. replay the reduced startup with the authorized workspace assets and compare F_SP102/title captures against Dusklight PC;
+2. address the largest visible material/alpha/depth/UV differences first;
+3. fix water, fog, far-background and scene layers in F_SP102/F_SP108;
+4. preserve the already-proven save/control/gameplay route;
+5. extend title/scene material animation only with source-backed BPK/BRK/BTK behavior.
 
 ## Explicitly not closed
 
-- complete asset-backed canonical intro/title/save/F_SP108 one-EBOOT run with source-faithful startup presentation;
+- asset-backed visual acceptance of the reduced startup and title against Dusklight PC;
+- full water/fog/background/scene-layer parity for F_SP102/F_SP108;
+- complete TEV parity beyond the bounded two-pass PSP approximation;
+- title and scene BPK/BRK/BTK material animation coverage;
 - full first-playable control acceptance for camera/action/pause/resume in actual F_SP108;
 - full inventory/pause UI fidelity;
 - all chest sizes/items and full item message integration;
