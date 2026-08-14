@@ -11,17 +11,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Package standalone 7zip runtime
+      - name: Package installed 7zip runtime
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y 7zip
-          SEVEN="$(command -v 7zz)"
-          test -x "$SEVEN"
-          mkdir -p payload/bin
-          cp -L "$SEVEN" payload/bin/7zz
-          payload/bin/7zz i | head -20
+          mkdir -p payload
+          dpkg -L 7zip | tee 7zip-package-files.txt
+          while IFS= read -r path; do
+            if [ -f "$path" ]; then
+              cp --parents -L "$path" payload/
+            fi
+          done < 7zip-package-files.txt
+          find payload -type f -maxdepth 5 -print
+          test -n "$(find payload -type f -name '7z*' -print -quit)"
           tar -C payload -czf 7zip-runtime.tar.gz .
           sha256sum 7zip-runtime.tar.gz > 7zip-runtime.tar.gz.sha256
       - uses: actions/upload-artifact@v4
@@ -30,3 +34,4 @@ jobs:
           path: |
             7zip-runtime.tar.gz
             7zip-runtime.tar.gz.sha256
+            7zip-package-files.txt
