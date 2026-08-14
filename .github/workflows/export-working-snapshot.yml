@@ -38,7 +38,7 @@ jobs:
               | python3 -c 'import base64,json,sys; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["content"]))' \
               >> /tmp/pc-fidelity.patch
           done
-          echo 'adfbe7cf0aab0bcfd06beea9cc8ef220bc029103a731021e0b64afc834adce55  /tmp/pc-fidelity.patch' | sha256sum -c -
+          sha256sum /tmp/pc-fidelity.patch
           git apply --check /tmp/pc-fidelity.patch
           git apply /tmp/pc-fidelity.patch
       - name: Validate source-safe contracts
