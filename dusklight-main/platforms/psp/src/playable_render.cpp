@@ -4,6 +4,7 @@
 #include "dusk/psp/link_fidelity.hpp"
 #include "dusk/psp/link_lighting.hpp"
 #include "dusk/psp/platform.hpp"
+#include "dusk/psp/room_package.hpp"
 
 #include <pspdisplay.h>
 #include <pspge.h>
@@ -123,7 +124,8 @@ bool trace_render_submission(
     render_trace::Source source, render_trace::Bucket bucket,
     std::uint16_t actor_id, std::uint16_t material_id,
     std::uint16_t shape_id, std::uint16_t texture_id,
-    bool depth_write, bool culling, bool fog, bool lighting) {
+    bool depth_write, bool culling, bool fog, bool lighting,
+    std::uint8_t alpha_reference = 0x80) {
     if (!g_render_trace.enabled()) {
         return true;
     }
@@ -133,7 +135,7 @@ bool trace_render_submission(
     const render_trace::Submission submission = {
         g_render_trace_frame, source, bucket, actor_id, material_id,
         shape_id, texture_id,
-        static_cast<std::uint8_t>(alpha_test ? 0x7f : 0),
+        static_cast<std::uint8_t>(alpha_test ? alpha_reference : 0),
         bucket != render_trace::Bucket::Ui, depth_write, alpha_test,
         blending, culling, fog, lighting,
     };
@@ -152,6 +154,125 @@ int reversed_depth_func(std::uint8_t source) {
         GU_LESS, GU_NOTEQUAL, GU_LEQUAL, GU_ALWAYS,
     };
     return mapping[source & 7u];
+}
+
+int alpha_compare_func(std::uint8_t source) {
+    static const int mapping[8] = {
+        GU_NEVER, GU_LESS, GU_EQUAL, GU_LEQUAL,
+        GU_GREATER, GU_NOTEQUAL, GU_GEQUAL, GU_ALWAYS,
+    };
+    return mapping[source & 7u];
+}
+
+struct AppliedAlphaMaterialState {
+    bool present = false;
+    bool alpha_exact = false;
+    bool blend_exact = false;
+    bool cull_exact = false;
+    bool culling = false;
+    std::uint8_t alpha_reference = 0x80;
+};
+
+bool gx_blend_factor(
+    std::uint8_t source, int* factor, std::uint32_t* fixed) {
+    if (factor == nullptr || fixed == nullptr) {
+        return false;
+    }
+    switch (source) {
+    case 0: *factor = GU_FIX; *fixed = 0x00000000u; return true;
+    case 1: *factor = GU_FIX; *fixed = 0xffffffffu; return true;
+    case 2: *factor = GU_OTHER_COLOR; *fixed = 0; return true;
+    case 3: *factor = GU_ONE_MINUS_OTHER_COLOR; *fixed = 0; return true;
+    case 4: *factor = GU_SRC_ALPHA; *fixed = 0; return true;
+    case 5: *factor = GU_ONE_MINUS_SRC_ALPHA; *fixed = 0; return true;
+    case 6: *factor = GU_DST_ALPHA; *fixed = 0; return true;
+    case 7: *factor = GU_ONE_MINUS_DST_ALPHA; *fixed = 0; return true;
+    default: return false;
+    }
+}
+
+AppliedAlphaMaterialState apply_room_alpha_material_state(
+    std::uint16_t material_id, std::uint8_t fallback_bucket) {
+    AppliedAlphaMaterialState result = {};
+    const room::PackageView package = {
+        g_room_texture_package.bytes, g_room_texture_package.size,
+        g_room_texture_package.expected_crc,
+        g_room_texture_package.actual_crc};
+    room::AlphaMaterialState state = {};
+    if (room::read_room_alpha_material_state(
+            package, material_id, &state) != room::PackageError::Ok) {
+        if (fallback_bucket == 1) {
+            sceGuDisable(GU_BLEND);
+            sceGuEnable(GU_ALPHA_TEST);
+            sceGuAlphaFunc(GU_GEQUAL, 0x80, 0xff);
+        } else if (fallback_bucket == 2) {
+            sceGuDisable(GU_ALPHA_TEST);
+            sceGuEnable(GU_BLEND);
+            sceGuBlendFunc(
+                GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+        } else {
+            sceGuDisable(GU_ALPHA_TEST);
+            sceGuDisable(GU_BLEND);
+        }
+        return result;
+    }
+
+    result.present = true;
+    result.culling = state.cull_mode == 2;
+    if (state.cull_mode == 0) {
+        sceGuDisable(GU_CULL_FACE);
+        result.cull_exact = true;
+    } else if (state.cull_mode == 2) {
+        sceGuEnable(GU_CULL_FACE);
+        sceGuFrontFace(GU_CW);
+        result.cull_exact = true;
+    } else {
+        sceGuDisable(GU_CULL_FACE);
+    }
+
+    const bool alpha_always =
+        state.alpha_comp0 == 7 && state.alpha_comp1 == 7;
+    if (alpha_always) {
+        sceGuDisable(GU_ALPHA_TEST);
+        result.alpha_exact = true;
+        result.alpha_reference = 0;
+    } else if (state.alpha_op == 0 &&
+               state.alpha_comp1 == 3 && state.alpha_ref1 == 255) {
+        sceGuEnable(GU_ALPHA_TEST);
+        sceGuAlphaFunc(
+            alpha_compare_func(state.alpha_comp0),
+            state.alpha_ref0, 0xff);
+        result.alpha_exact = true;
+        result.alpha_reference = state.alpha_ref0;
+    } else {
+        sceGuDisable(GU_ALPHA_TEST);
+    }
+
+    if (state.blend_mode == 0) {
+        sceGuDisable(GU_BLEND);
+        result.blend_exact = true;
+    } else if (state.blend_mode == 1) {
+        int source_factor = GU_FIX;
+        int destination_factor = GU_FIX;
+        std::uint32_t source_fixed = 0;
+        std::uint32_t destination_fixed = 0;
+        if (gx_blend_factor(
+                state.blend_src, &source_factor, &source_fixed) &&
+            gx_blend_factor(
+                state.blend_dst, &destination_factor,
+                &destination_fixed)) {
+            sceGuEnable(GU_BLEND);
+            sceGuBlendFunc(
+                GU_ADD, source_factor, destination_factor,
+                source_fixed, destination_fixed);
+            result.blend_exact = true;
+        } else {
+            sceGuDisable(GU_BLEND);
+        }
+    } else {
+        sceGuDisable(GU_BLEND);
+    }
+    return result;
 }
 
 alignas(16) constexpr ColorVertex kFloor[6] = {
@@ -883,12 +1004,9 @@ void bind_room_texture(std::uint16_t texture) {
 
 void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
     const std::uint32_t section_table = read_u32(g_room_model + 72);
-    const std::uint8_t* vertex_section =
-        g_room_model + section_table;
-    const std::uint8_t* index_section =
-        vertex_section + 32;
-    const std::uint8_t* submesh_section =
-        index_section + 32;
+    const std::uint8_t* vertex_section = g_room_model + section_table;
+    const std::uint8_t* index_section = vertex_section + 32;
+    const std::uint8_t* submesh_section = index_section + 32;
     const std::uint8_t* vertices =
         g_room_model + read_u32(vertex_section + 4);
     const std::uint8_t* indices =
@@ -910,22 +1028,24 @@ void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
         } else {
             sceGuDisable(GU_DEPTH_TEST);
         }
-        if (wanted == 1) {
-            sceGuDisable(GU_BLEND);
-            sceGuEnable(GU_ALPHA_TEST);
-            sceGuAlphaFunc(GU_GREATER, 0x7f, 0xff);
-            sceGuDepthMask(source_depth_write ? GU_FALSE : GU_TRUE);
-        } else if (wanted == 2) {
-            sceGuDisable(GU_ALPHA_TEST);
-            sceGuEnable(GU_BLEND);
-            sceGuBlendFunc(
-                GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
-            sceGuDepthMask(source_depth_write ? GU_FALSE : GU_TRUE);
+        const std::uint16_t source_material = read_u16(item + 16);
+        const AppliedAlphaMaterialState alpha_state =
+            apply_room_alpha_material_state(source_material, wanted);
+        if (alpha_state.present) {
+            ++metrics->room_alpha_state_records;
         } else {
-            sceGuDisable(GU_ALPHA_TEST);
-            sceGuDisable(GU_BLEND);
-            sceGuDepthMask(source_depth_write ? GU_FALSE : GU_TRUE);
+            ++metrics->room_alpha_state_missing_draws;
         }
+        if (alpha_state.alpha_exact) {
+            ++metrics->room_alpha_exact_draws;
+        }
+        if (alpha_state.blend_exact) {
+            ++metrics->room_blend_exact_draws;
+        }
+        if (alpha_state.cull_exact) {
+            ++metrics->room_cull_exact_draws;
+        }
+        sceGuDepthMask(source_depth_write ? GU_FALSE : GU_TRUE);
         const std::uint16_t texture = read_u16(item + 10);
         bind_room_texture(texture);
         sceGuShadeModel(GU_SMOOTH);
@@ -938,9 +1058,10 @@ void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
             vertices);
         trace_render_submission(
             render_trace::Source::Room, trace_bucket(wanted), 0,
-            read_u16(item + 16), read_u16(item + 14), texture,
-            source_depth_write, false,
-            metrics->environment_fog_enabled, false);
+            source_material, read_u16(item + 14), texture,
+            source_depth_write, alpha_state.culling,
+            metrics->environment_fog_enabled, false,
+            alpha_state.alpha_reference);
         ++metrics->room_draw_calls;
         if (wanted == 0) {
             ++metrics->room_opaque_draws;

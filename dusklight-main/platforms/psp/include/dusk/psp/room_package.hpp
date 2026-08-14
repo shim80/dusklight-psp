@@ -40,6 +40,43 @@ struct PackageView {
     std::uint32_t actual_crc;
 };
 
+enum class AlphaMaterialClass : std::uint8_t {
+    Opaque = 0,
+    AlphaTest = 1,
+    AlphaBlend = 2,
+    Additive = 3,
+    Multiply = 4,
+    UnsupportedComplex = 5,
+};
+
+struct AlphaMaterialState {
+    std::uint16_t source_material_id;
+    AlphaMaterialClass material_class;
+    std::uint8_t draw_buffer;
+    bool depth_test;
+    std::uint8_t depth_func;
+    bool depth_write;
+    std::uint8_t cull_mode;
+    std::uint8_t alpha_comp0;
+    std::uint8_t alpha_ref0;
+    std::uint8_t alpha_op;
+    std::uint8_t alpha_comp1;
+    std::uint8_t alpha_ref1;
+    std::uint8_t blend_mode;
+    std::uint8_t blend_src;
+    std::uint8_t blend_dst;
+    std::uint8_t blend_logic;
+    std::uint8_t texture_count;
+    bool texture_identities_complete;
+    std::uint16_t texture_ids[8];
+};
+
+constexpr std::uint8_t alpha_material_bucket(AlphaMaterialClass value) {
+    return value == AlphaMaterialClass::Opaque
+        ? 0
+        : value == AlphaMaterialClass::AlphaTest ? 1 : 2;
+}
+
 struct SceneExitV3 {
     std::uint16_t source_exit_index;
     char destination_stage[9];
@@ -133,6 +170,10 @@ PackageError validate_dprm(
     const void* bytes, std::uint32_t size, PackageView* view);
 PackageError validate_room_dptx(
     const void* bytes, std::uint32_t size, PackageView* view);
+PackageError read_room_alpha_material_state(
+    const PackageView& view,
+    std::uint16_t material_id,
+    AlphaMaterialState* state);
 PackageError validate_dpcl(
     const void* bytes, std::uint32_t size, PackageView* view);
 PackageError validate_dpsc(

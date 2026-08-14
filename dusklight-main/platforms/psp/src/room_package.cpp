@@ -14,6 +14,13 @@ constexpr std::uint32_t kSubmeshSize = 48;
 constexpr std::uint32_t kMaximumVertices = 45000;
 constexpr std::uint32_t kMaximumTriangles = 30000;
 constexpr std::uint32_t kMaximumSubmeshes = 96;
+constexpr std::uint32_t kAlphaMaterialHeaderMagicOffset = 64;
+constexpr std::uint32_t kAlphaMaterialTableOffsetOffset = 68;
+constexpr std::uint32_t kAlphaMaterialStrideOffset = 72;
+constexpr std::uint32_t kAlphaMaterialCountOffset = 76;
+constexpr std::uint32_t kAlphaMaterialFlagsOffset = 80;
+constexpr std::uint32_t kAlphaMaterialRecordSize = 40;
+constexpr std::uint32_t kAlphaMaterialMagic = 0x31564550u;  // PEV1
 
 bool range_valid(
     std::uint32_t offset,
@@ -211,7 +218,7 @@ PackageError validate_dprm(
 
 PackageError validate_room_dptx(
     const void* source, std::uint32_t size, PackageView* view) {
-    const PackageError base = validate_base(source, size, "DPTX", view);
+    const PackageError base = validate_base(source, size, "DPTX", view, 2);
     if (base != PackageError::Ok) {
         return base;
     }
@@ -268,6 +275,105 @@ PackageError validate_room_dptx(
         if (item[2] > 3) {
             return PackageError::Bucket;
         }
+    }
+    if (read_u16(bytes + 4) >= 2) {
+        const std::uint32_t state_table =
+            read_u32(bytes + kAlphaMaterialTableOffsetOffset);
+        const std::uint32_t state_stride =
+            read_u32(bytes + kAlphaMaterialStrideOffset);
+        const std::uint32_t state_count =
+            read_u32(bytes + kAlphaMaterialCountOffset);
+        if (read_u32(bytes + kAlphaMaterialHeaderMagicOffset) !=
+                kAlphaMaterialMagic ||
+            read_u32(bytes + kAlphaMaterialFlagsOffset) != 1 ||
+            state_stride != kAlphaMaterialRecordSize ||
+            state_count != materials ||
+            !range_valid(state_table, state_count, state_stride, size)) {
+            return PackageError::Layout;
+        }
+        for (std::uint32_t index = 0; index < state_count; ++index) {
+            const std::uint8_t* state =
+                bytes + state_table + index * state_stride;
+            if (read_u16(state) != index || state[2] > 5 ||
+                state[3] > 1 || state[4] > 1 || state[5] > 7 ||
+                state[6] > 1 || state[7] > 3 || state[8] > 7 ||
+                state[10] > 3 || state[11] > 7 ||
+                state[17] > 8 || state[18] > 1 || state[19] != 1) {
+                return PackageError::Layout;
+            }
+            if (alpha_material_bucket(
+                    static_cast<AlphaMaterialClass>(state[2])) !=
+                bytes[material_offset + index * material_stride + 2]) {
+                return PackageError::Bucket;
+            }
+            for (std::uint32_t texture = 0; texture < state[17]; ++texture) {
+                const std::uint16_t texture_id =
+                    read_u16(state + 20 + texture * 2);
+                const bool identity_required =
+                    texture == 0 || state[18] != 0;
+                if ((identity_required && texture_id >= textures) ||
+                    (!identity_required && texture_id != 0xffffu &&
+                     texture_id >= textures)) {
+                    return PackageError::Texture;
+                }
+            }
+            if (state[17] != 0 &&
+                read_u16(state + 20) !=
+                    read_u16(bytes + material_offset + index * material_stride)) {
+                return PackageError::Texture;
+            }
+        }
+    }
+    return PackageError::Ok;
+}
+
+PackageError read_room_alpha_material_state(
+    const PackageView& view,
+    std::uint16_t material_id,
+    AlphaMaterialState* state) {
+    if (view.bytes == nullptr || state == nullptr ||
+        read_u16(view.bytes + 4) < 2 ||
+        read_u32(view.bytes + kAlphaMaterialHeaderMagicOffset) !=
+            kAlphaMaterialMagic ||
+        read_u32(view.bytes + kAlphaMaterialStrideOffset) !=
+            kAlphaMaterialRecordSize ||
+        material_id >= read_u32(view.bytes + kAlphaMaterialCountOffset)) {
+        return PackageError::Material;
+    }
+    const std::uint32_t table =
+        read_u32(view.bytes + kAlphaMaterialTableOffsetOffset);
+    const std::uint32_t offset =
+        table + static_cast<std::uint32_t>(material_id) *
+                    kAlphaMaterialRecordSize;
+    if (offset > view.size || kAlphaMaterialRecordSize > view.size - offset) {
+        return PackageError::Range;
+    }
+    const std::uint8_t* item = view.bytes + offset;
+    if (read_u16(item) != material_id || item[2] > 5 ||
+        item[17] > 8 || item[19] != 1) {
+        return PackageError::Layout;
+    }
+    *state = {};
+    state->source_material_id = material_id;
+    state->material_class = static_cast<AlphaMaterialClass>(item[2]);
+    state->draw_buffer = item[3];
+    state->depth_test = item[4] != 0;
+    state->depth_func = item[5];
+    state->depth_write = item[6] != 0;
+    state->cull_mode = item[7];
+    state->alpha_comp0 = item[8];
+    state->alpha_ref0 = item[9];
+    state->alpha_op = item[10];
+    state->alpha_comp1 = item[11];
+    state->alpha_ref1 = item[12];
+    state->blend_mode = item[13];
+    state->blend_src = item[14];
+    state->blend_dst = item[15];
+    state->blend_logic = item[16];
+    state->texture_count = item[17];
+    state->texture_identities_complete = item[18] != 0;
+    for (std::uint32_t index = 0; index < 8; ++index) {
+        state->texture_ids[index] = read_u16(item + 20 + index * 2);
     }
     return PackageError::Ok;
 }
