@@ -1,0 +1,48 @@
+name: Update F_SP102 checkpoint docs temporary
+
+on:
+  push:
+    branches:
+      - agent/intro-fsp102-environment-mainline
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.event.head_commit.message == 'Temporarily update F_SP102 checkpoint docs'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Update STATUS and RESUME
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          status = Path('docs/STATUS.md')
+          s = status.read_text()
+          s = s.replace('Updated: 2026-08-13', 'Updated: 2026-08-14', 1)
+          marker = '## Active task\n'
+          section = '''## F_SP102 startup environment checkpoint\n\nDraft PR #12 (`Render complete F_SP102 startup environment`) is based directly on current `main` and remains intentionally unmerged until asset-backed visual acceptance.\n\nThe source-safe exporter combines the five F_SP102 room BMDs and four stage/sky BMDs into the existing DPRM/DPTX v2 runtime contract. Two independent local exports are byte-identical: 24,263 vertices, 21,513 triangles, 46 submeshes, 46 materials, 34 textures and 565,888 texture bytes. The generated commercial-derived packages remain local.\n\nGitHub Actions run `31776948473` on commit `f5dac2ed771b5979a123a80b9ee2b37e6c18e495` is green for exporter/contract checks, pinned PSP toolchain bootstrap, Allegrex build, `mips:allegrex` verification and pinned PPSSPP smoke. Exact EBOOT SHA-256: `5ce0e73926752643670ab0a25b3d0fc872772883d365aaeeb33180061df1fb96`.\n\nThe canonical startup room paths now resolve to `data/startup/fsp102_environment.dprm` and `data/startup/fsp102_environment.dptx`. The progressive-scan startup segment also uses DPSU channel 3 instead of reusing the warning channel 0.\n\nVisual acceptance is still open because the previously materialized startup asset bundle is not present in the current local runtime. Do not merge PR #12 or publish a release based only on the public smoke.\n\n'''
+          if section not in s:
+              s = s.replace(marker, section + marker, 1)
+          status.write_text(s)
+
+          resume = Path('docs/RESUME.md')
+          r = resume.read_text()
+          marker = '## 8. Immediate next work\n'
+          section = '''## 7a. Current startup cinematic checkpoint\n\nPR #12 (`Render complete F_SP102 startup environment`) is the current intro branch. It keeps commercial-derived output local and adds only the deterministic exporter/bootstrap/build tooling plus the runtime asset-path contract.\n\nValidated local export metrics: 24,263 vertices, 21,513 triangles, 46 submeshes, 46 materials, 34 textures, 565,888 texture bytes. DPRM SHA-256 `019f68147a24f51c72fe1f6410fe2f890de992261673a24134bdd8c7d639c6e9`; DPTX SHA-256 `cc025e6607c50b71ae00700ab68c81665a499418f56736457099c7a75e1dde0b`.\n\nPublic checkpoint run `31776948473` on `f5dac2ed771b5979a123a80b9ee2b37e6c18e495` is fully green. Exact EBOOT SHA-256: `5ce0e73926752643670ab0a25b3d0fc872772883d365aaeeb33180061df1fb96`.\n\nThe branch now expects `data/startup/fsp102_environment.dprm/.dptx` under the source `demo38_01` DPCM camera. Keep PR #12 draft until that exact EBOOT is replayed with the complete startup asset set and a meaningful cinematic/title framebuffer is visually accepted.\n\n'''
+          if section not in r:
+              r = r.replace(marker, section + marker, 1)
+          resume.write_text(r)
+          PY
+          git diff --check
+          git config user.name 'shim80'
+          git config user.email '22941009+shim80@users.noreply.github.com'
+          git add docs/STATUS.md docs/RESUME.md
+          git commit -m 'Document F_SP102 startup environment checkpoint'
+          git push origin HEAD:agent/intro-fsp102-environment-mainline
