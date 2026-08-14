@@ -28,6 +28,10 @@ Read, in order:
 20. `/scripts/validate-canonical-first-playable-assets.sh`
 21. `/scripts/run-canonical-first-playable.sh`
 22. `/test/getawait-heart-probe/main.cpp`
+23. `/docs/reports/205-psp-pc-fidelity-startup-checkpoint.md`
+24. `/dusklight-main/platforms/psp/include/dusk/psp/room_package.hpp`
+25. `/tools/fsp102_environment_export.py`
+26. `/tools/startup_sequence_export.py`
 
 Do not infer that a historical report's Git SHA exists in the reconstructed repository. The historical ledger distinguishes provenance from reconstructed commits.
 
@@ -39,7 +43,7 @@ An authorized workspace asset bundle was successfully located on 2026-08-13 and 
 
 ## 3. Latest public checkpoint
 
-Latest fully green canonical public proof: GitHub Actions run `31679685111`, commit `3318caf88e8ec2cdf84cebc54408dac5fc01cdea`.
+Latest fully green canonical public proof before the current fidelity branch: GitHub Actions run `31679685111`, commit `3318caf88e8ec2cdf84cebc54408dac5fc01cdea`.
 
 Canonical EBOOT SHA-256: `9fce67ba95f3ff6c3be7ce674be324711ff03e17f1986b4a7993fe8f4129d5a2`.
 
@@ -107,11 +111,11 @@ data/common/link.dpan
 data/common/hud.dpui
 ```
 
-The workspace also contains packaged startup data, including `data/startup/startup.dpst`, `title_ui.dpsu`, `file_select.dpsu`, startup logos and title model/texture/animation packages. These should be used next to replace the synthetic/public startup presentation.
+The authorized workspace also contains packaged startup data. Never upload the commercial-derived package bytes to GitHub.
 
-## 7. Rendering profile
+## 7. Rendering profile history
 
-Keep the first-playable renderer deliberately conservative while gameplay is incomplete:
+The first-playable route was deliberately conservative while gameplay coverage was incomplete:
 
 - `presentation::Profile::OpaqueOnly`;
 - `RenderProfile::KnownGoodUnlit`;
@@ -119,26 +123,74 @@ Keep the first-playable renderer deliberately conservative while gameplay is inc
 - fog off;
 - shadows off.
 
-Do not spend the next checkpoint on graphical polish.
+The current fidelity branch does not claim those old conservative settings are visually sufficient. Visual work should now improve source fidelity without regressing the proven gameplay/save/control route.
 
-## 7a. Current startup cinematic checkpoint
+## 7a. Previous F_SP102 startup environment checkpoint
 
-PR #12 (`Render complete F_SP102 startup environment`) is the current intro branch. It keeps commercial-derived output local and adds only the deterministic exporter/bootstrap/build tooling plus the runtime asset-path contract.
+PR #12 (`Render complete F_SP102 startup environment`) is the base intro branch for the current fidelity work. It keeps commercial-derived output local and adds deterministic exporter/bootstrap/build tooling plus the runtime asset-path contract.
 
-Validated local export metrics: 24,263 vertices, 21,513 triangles, 46 submeshes, 46 materials, 34 textures, 565,888 texture bytes. DPRM SHA-256 `019f68147a24f51c72fe1f6410fe2f890de992261673a24134bdd8c7d639c6e9`; DPTX SHA-256 `cc025e6607c50b71ae00700ab68c81665a499418f56736457099c7a75e1dde0b`.
+Previous validated export metrics were 24,263 vertices, 21,513 triangles, 46 submeshes, 46 materials, 34 textures and 565,888 texture bytes. Public checkpoint run `31776948473` on `f5dac2ed771b5979a123a80b9ee2b37e6c18e495` was green with EBOOT SHA-256 `5ce0e73926752643670ab0a25b3d0fc872772883d365aaeeb33180061df1fb96`.
 
-Public checkpoint run `31776948473` on `f5dac2ed771b5979a123a80b9ee2b37e6c18e495` is fully green. Exact EBOOT SHA-256: `5ce0e73926752643670ab0a25b3d0fc872772883d365aaeeb33180061df1fb96`.
+## 7b. Current PSP PC-fidelity/startup checkpoint
 
-The branch now expects `data/startup/fsp102_environment.dprm/.dptx` under the source `demo38_01` DPCM camera. Keep PR #12 draft until that exact EBOOT is replayed with the complete startup asset set and a meaningful cinematic/title framebuffer is visually accepted.
+Work is on `agent/psp-pc-fidelity-startup`, stacked on the F_SP102 branch.
+
+Key code checkpoint commit: `a39a280fb1876f0995d357a53a63ff70eaee5f98` (`Improve PSP startup and material fidelity`).
+
+Rendering changes:
+
+- DPTX v3 adds `MPV1` bounded material plans;
+- maximum two PSP GU passes per material;
+- per-pass texture identity, texture effect, blend policy and depth-write state;
+- explicit Exact/Approximate/Unsupported fidelity status rather than silent TEV equivalence;
+- source Item3D title camera replaces the arbitrary 3000-unit billboard placement;
+- title camera uses FOV 45, eye `(0,0,-1000)`, model translation `(0,0,-430)` and mirrored X.
+
+Recovered F_SP102 export checkpoint:
+
+- 24,348 vertices;
+- 21,513 triangles;
+- 46 submeshes/materials;
+- 40 textures;
+- 656,128 texture bytes;
+- 48 planned passes;
+- 2 exact, 41 approximate, 3 unsupported materials.
+
+Startup is intentionally reduced to:
+
+`Dusklight team logo -> F_SP102 title -> START -> file select/save -> gameplay`
+
+The new exporter does not emit warning, Nintendo, Dolby, progressive or realtime-opening replay segments. The pre-title team card is port-owned/generated and does not require commercial logo assets.
+
+PSP controls remain the existing native mapping documented in section 5.
+
+Validation run `31819052956` passed MPV1 host tests, reduced-startup host/export tests, pinned PSPDEV/PPSSPP bootstrap and the full Allegrex link. EBOOT SHA-256:
+
+`9f3ec5f9a937c694ae1e3b4be1a37468037652c4e54b86f8c95d9f9278345eca`
+
+Proof artifact ID: `9226218542`.
+
+Important: this is a compile/contract checkpoint, not a new asset-backed visual acceptance. The current execution environment did not expose the Twilight Princess ISO or Dusklight PC runtime/assets. Do not claim PC parity from this run.
+
+Still open:
+
+- asset-backed F_SP102/title/F_SP108 replay against Dusklight PC captures;
+- water, fog, far background and scene layers;
+- UV/clamp/wrap and visible pass-order defects;
+- alpha-test/blend/depth fixes driven by real foliage/water captures;
+- source BPK/BRK/BTK material animation for title and affected scenes;
+- improving the 41 approximate and 3 unsupported F_SP102 materials where they are visibly wrong.
+
+Detailed report: `docs/reports/205-psp-pc-fidelity-startup-checkpoint.md`.
 
 ## 8. Immediate next work
 
-1. finish deterministic asset-backed control acceptance in F_SP108 for camera, source-prompt Cross action, START pause and resume;
-2. keep the proven room+Link framebuffer path intact;
-3. wire the packaged source-faithful startup assets into the canonical driver instead of the synthetic fixture;
-4. replay `intro/opening -> title -> file select -> save -> F_SP108` in one EBOOT;
-5. add only real source-faithful UI/gameplay screenshots to `screenshot/`;
-6. then evaluate the startup branch for merge/release readiness.
+1. replay the reduced `Dusklight logo -> title -> START -> save -> gameplay` path using the authorized workspace asset set;
+2. capture the same F_SP102/title/F_SP108 views in PSP and Dusklight PC and rank visible deltas;
+3. fix the largest material/alpha/depth/UV errors first, preserving the two-pass PSP budget unless evidence justifies another bounded specialization;
+4. focus next on water, fog, background and scene layers in F_SP102/F_SP108;
+5. implement source-backed BPK/BRK/BTK material animation where it materially affects title/scene fidelity;
+6. rerun control acceptance so camera/action/pause/resume remain intact after rendering changes.
 
 ## 9. Heart Piece / chest track
 
@@ -152,10 +204,10 @@ PR #5 (`Add BRK runtime plumbing for source item effects`) remains draft. Its co
 
 Do not publish the first public EBOOT release until all are ready together:
 
-- intro cinematic/startup route;
-- main/title menu;
+- reduced startup route with the Dusklight team logo and source-faithful title;
 - persistent save creation/loading;
 - beginning of the game in F_SP108;
-- PSP-adapted controls sufficient for user testing.
+- PSP-adapted controls sufficient for user testing;
+- an asset-backed visual pass confirming that the major material/alpha/water/background defects are acceptable for the target build.
 
-Rendering polish remains secondary until gameplay completion.
+Do not describe the current bounded material implementation as full TEV or PC rendering parity.
