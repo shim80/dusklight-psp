@@ -1,0 +1,50 @@
+name: Apply F_SP102 startup contract temporary
+
+on:
+  push:
+    branches:
+      - agent/intro-fsp102-environment-mainline
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Temporarily apply F_SP102 startup contract patch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch startup contract and validate host test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          test = Path('test/canonical-assets-host/main.cpp')
+          s = test.read_text()
+          s = s.replace('data/startup/title_room.dprm', 'data/startup/fsp102_environment.dprm')
+          s = s.replace('data/startup/title_room.dptx', 'data/startup/fsp102_environment.dptx')
+          test.write_text(s)
+
+          entry = Path('dusklight-main/platforms/psp/src/canonical_startup_entry.cpp')
+          s = entry.read_text()
+          old = '''    case startup::Segment::BootWarning:\n    case startup::Segment::ProgressivePrompt:\n        channel = 0;\n        break;\n'''
+          new = '''    case startup::Segment::BootWarning:\n        channel = 0;\n        break;\n    case startup::Segment::ProgressivePrompt:\n        channel = 3;\n        break;\n'''
+          if old not in s:
+              raise SystemExit('startup prompt mapping pattern not found')
+          entry.write_text(s.replace(old, new))
+          PY
+          git diff --check
+          cmake -S test/canonical-assets-host -B .work/build/canonical-assets-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/canonical-assets-host -j 4
+          ./.work/build/canonical-assets-host/canonical_assets_host_test | tee .work/canonical-assets-host.log
+          grep -F 'CANONICAL_STARTUP_ASSETS_HOST_OK paths=10 sequence=DPST ui=DPSU title=DPRM,DPTX,DPAN camera=DPCM fail_closed=1' .work/canonical-assets-host.log
+          git config user.name 'shim80'
+          git config user.email '22941009+shim80@users.noreply.github.com'
+          git add test/canonical-assets-host/main.cpp dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
+          git commit -m 'Use complete F_SP102 startup environment'
+          git push origin HEAD:agent/intro-fsp102-environment-mainline
