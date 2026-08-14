@@ -10,20 +10,19 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'Temporarily apply validated intro DPCM onto current main'
+    if: github.event.head_commit.message == 'Retry DPCM mainline application without workflow file'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Apply validated DPCM tree and remove temporary workflow
+      - name: Apply validated DPCM code and remove temporary workflow
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin agent/intro-dpcm-publish-stage
           files=(
-            .github/workflows/psp-intro-dpcm.yml
             dusklight-main/platforms/psp/CMakeLists.txt
             dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp
             dusklight-main/platforms/psp/include/dusk/psp/canonical_startup_loader.hpp
@@ -40,13 +39,6 @@ jobs:
             test/startup-camera-host/main.cpp
           )
           git checkout origin/agent/intro-dpcm-publish-stage -- "${files[@]}"
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('.github/workflows/psp-intro-dpcm.yml')
-          s = p.read_text()
-          s = s.replace('      - agent/intro-dpcm-publish-stage\n      - agent/intro-environment\n', '      - agent/intro-dpcm-mainline\n      - agent/intro-environment\n      - main\n')
-          p.write_text(s)
-          PY
           git rm .github/workflows/apply-intro-dpcm-mainline-temp.yml
           git diff --check
           git config user.name 'shim80'
