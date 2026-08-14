@@ -126,6 +126,24 @@ CanonicalStartupLoadError load_animation(
     return CanonicalStartupLoadError::Ok;
 }
 
+CanonicalStartupLoadError load_camera(
+    const char* path,
+    OwnedStartupCamera* output) {
+    RawPackage raw = {};
+    CanonicalStartupLoadError error = load_raw(path, &raw);
+    if (error != CanonicalStartupLoadError::Ok) {
+        return error;
+    }
+    camera::TrackView view = {};
+    if (camera::validate_track(raw.bytes, raw.size, &view) !=
+        camera::TrackError::Ok) {
+        std::free(raw.bytes);
+        return CanonicalStartupLoadError::TitleCameraPackage;
+    }
+    *output = {raw.bytes, raw.size, view};
+    return CanonicalStartupLoadError::Ok;
+}
+
 }  // namespace
 
 CanonicalStartupLoadError load_canonical_startup_packages(
@@ -203,6 +221,12 @@ CanonicalStartupLoadError load_canonical_startup_packages(
         unload_canonical_startup_packages(packages);
         return error;
     }
+    error = load_camera(
+        assets.title_camera, &packages->title_camera);
+    if (error != CanonicalStartupLoadError::Ok) {
+        unload_canonical_startup_packages(packages);
+        return error;
+    }
     return CanonicalStartupLoadError::Ok;
 }
 
@@ -219,6 +243,7 @@ void unload_canonical_startup_packages(CanonicalStartupPackages* packages) {
     unload_raw(&packages->title_logo_model.bytes);
     unload_raw(&packages->title_logo_textures.bytes);
     unload_raw(&packages->title_logo_animation.bytes);
+    unload_raw(&packages->title_camera.bytes);
     *packages = {};
 }
 
@@ -240,6 +265,7 @@ const char* canonical_startup_load_error_name(CanonicalStartupLoadError error) {
     case CanonicalStartupLoadError::TitleLogoModelPackage: return "title_logo_dprm";
     case CanonicalStartupLoadError::TitleLogoTexturePackage: return "title_logo_dptx";
     case CanonicalStartupLoadError::TitleLogoAnimationPackage: return "title_logo_dpan";
+    case CanonicalStartupLoadError::TitleCameraPackage: return "title_camera_dpcm";
     }
     return "unknown";
 }
