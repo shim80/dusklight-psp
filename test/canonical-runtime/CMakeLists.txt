@@ -687,3 +687,15 @@ target_compile_features(full_ascii_dpui_host_test PRIVATE cxx_std_20)
 target_compile_options(full_ascii_dpui_host_test PRIVATE
     -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
 )
+
+add_executable(alpha_material_state_host_test
+    alpha_material_state_host_test.cpp
+    "${DUSK_PSP_ROOT}/src/room_package.cpp"
+)
+target_include_directories(alpha_material_state_host_test PRIVATE
+    "${DUSK_PSP_ROOT}/include"
+)
+target_compile_features(alpha_material_state_host_test PRIVATE cxx_std_20)
+target_compile_options(alpha_material_state_host_test PRIVATE
+    -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
+)

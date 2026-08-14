@@ -82,6 +82,10 @@ prepare_tree() {
     cp -- "$STARTUP/fsp108_$package" \
       "$destination/data/stages/F_SP108/R01/$package"
   done
+  python3 "$PROJECT_ROOT/tools/alpha_material/apply_material_state.py" \
+    --manifest "$PROJECT_ROOT/reference/parity/alpha-f-sp108/material-state-v1.json" \
+    --dprm "$destination/data/stages/F_SP108/R01/room.dprm" \
+    --dptx "$destination/data/stages/F_SP108/R01/room.dptx"
   for room in R09 R02; do
     for package in room.dprm room.dptx room.dpcl room.dpsc ROOM.MANIFEST; do
       cp -- "$ROOMS/stages/D_MN10/$room/$package" \
