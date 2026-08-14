@@ -25,7 +25,6 @@ constexpr std::uint32_t kStartupCapabilities =
     startup::Capability::TitleModel | startup::Capability::FileSelection |
     startup::Capability::Gameplay;
 constexpr std::uint32_t kStartupFrameDelayMicroseconds = 16667;
-constexpr std::uint32_t kOpeningFrames = 1800;
 constexpr std::uint32_t kTitleLogoFrames = 300;
 constexpr std::uint16_t kNoUiChannel = 0xffffu;
 constexpr std::uint16_t kTitlePromptChannel = 8;
@@ -319,12 +318,19 @@ int run_canonical_startup_then_game() {
         shutdown();
         return 21;
     }
+    const std::uint32_t opening_display_frames =
+        playable::startup_title_camera_display_frames(packages.title_camera.view);
+    if (opening_display_frames == 0) {
+        unload_canonical_startup_packages(&packages);
+        shutdown();
+        return 22;
+    }
 
     TitleLogoGeometry title_geometry = {};
     if (!initialize_title_logo_geometry(packages, &title_geometry)) {
         unload_canonical_startup_packages(&packages);
         shutdown();
-        return 22;
+        return 23;
     }
 
     startup::StartupRuntime startup_runtime;
@@ -332,14 +338,14 @@ int run_canonical_startup_then_game() {
             packages.sequence.view, kStartupCapabilities)) {
         unload_canonical_startup_packages(&packages);
         shutdown();
-        return 23;
+        return 24;
     }
 
     playable::RenderMetrics render_metrics = {};
     if (!initialize_logo_renderer(packages, &render_metrics)) {
         unload_canonical_startup_packages(&packages);
         shutdown();
-        return 24;
+        return 25;
     }
 
     animation::PspBckPlayer title_animation;
@@ -349,7 +355,7 @@ int run_canonical_startup_then_game() {
         playable::shutdown_renderer();
         unload_canonical_startup_packages(&packages);
         shutdown();
-        return 25;
+        return 26;
     }
 
     startup::Segment previous_segment = startup_runtime.current_segment();
@@ -379,7 +385,7 @@ int run_canonical_startup_then_game() {
                 if (!initialize_title_renderer(packages, &render_metrics)) {
                     unload_canonical_startup_packages(&packages);
                     shutdown();
-                    return 26;
+                    return 27;
                 }
             }
             if (segment == startup::Segment::OpeningRealtime) {
@@ -398,7 +404,7 @@ int run_canonical_startup_then_game() {
             playable::shutdown_renderer();
             unload_canonical_startup_packages(&packages);
             shutdown();
-            return 27;
+            return 28;
         }
 
         const std::uint32_t segment_frame =
@@ -417,13 +423,17 @@ int run_canonical_startup_then_game() {
         } else if (segment == startup::Segment::OpeningLoad) {
             render_ok = playable::render_black_transition_frame(&render_metrics);
         } else if (segment == startup::Segment::OpeningRealtime) {
-            const playable::StartupTitleCamera camera =
-                playable::startup_title_camera_from_source(opening_frame);
-            const playable::StaticModelRenderView title_model =
-                make_title_model(packages, camera);
-            render_ok = playable::render_startup_title_frame(
-                title_model, camera, false,
-                kNoUiChannel, 255, &render_metrics);
+            playable::StartupTitleCamera camera = {};
+            if (!playable::startup_title_camera_from_track(
+                    packages.title_camera.view, opening_frame, &camera)) {
+                render_ok = false;
+            } else {
+                const playable::StaticModelRenderView title_model =
+                    make_title_model(packages, camera);
+                render_ok = playable::render_startup_title_frame(
+                    title_model, camera, false,
+                    kNoUiChannel, 255, &render_metrics);
+            }
             ++opening_frame;
         } else if (segment == startup::Segment::TitleLogo ||
                    segment == startup::Segment::TitlePrompt) {
@@ -431,19 +441,24 @@ int run_canonical_startup_then_game() {
                     &packages, title_geometry, &title_animation)) {
                 render_ok = false;
             } else {
-                const playable::StartupTitleCamera camera =
-                    playable::startup_title_camera_from_source(kOpeningFrames);
-                const playable::StaticModelRenderView title_model =
-                    make_title_model(packages, camera);
-                render_ok = playable::render_startup_title_frame(
-                    title_model, camera, true,
-                    segment == startup::Segment::TitlePrompt
-                        ? kTitlePromptChannel
-                        : kNoUiChannel,
-                    segment == startup::Segment::TitlePrompt
-                        ? title_prompt_alpha(segment_frame)
-                        : 255,
-                    &render_metrics);
+                playable::StartupTitleCamera camera = {};
+                if (!playable::startup_title_camera_from_track(
+                        packages.title_camera.view,
+                        opening_display_frames, &camera)) {
+                    render_ok = false;
+                } else {
+                    const playable::StaticModelRenderView title_model =
+                        make_title_model(packages, camera);
+                    render_ok = playable::render_startup_title_frame(
+                        title_model, camera, true,
+                        segment == startup::Segment::TitlePrompt
+                            ? kTitlePromptChannel
+                            : kNoUiChannel,
+                        segment == startup::Segment::TitlePrompt
+                            ? title_prompt_alpha(segment_frame)
+                            : 255,
+                        &render_metrics);
+                }
             }
             if (segment == startup::Segment::TitleLogo) {
                 title_animation.play();
@@ -459,7 +474,7 @@ int run_canonical_startup_then_game() {
             playable::shutdown_renderer();
             unload_canonical_startup_packages(&packages);
             shutdown();
-            return 28;
+            return 29;
         }
 
         startup::Input input = {};
@@ -472,7 +487,7 @@ int run_canonical_startup_then_game() {
         const bool resources_ready = segment == startup::Segment::OpeningLoad;
         const bool source_event_complete =
             (segment == startup::Segment::OpeningRealtime &&
-             opening_frame >= kOpeningFrames) ||
+             opening_frame >= opening_display_frames) ||
             (segment == startup::Segment::TitleLogo &&
              title_frame >= kTitleLogoFrames);
         if (!startup_runtime.tick(
@@ -480,7 +495,7 @@ int run_canonical_startup_then_game() {
             playable::shutdown_renderer();
             unload_canonical_startup_packages(&packages);
             shutdown();
-            return 29;
+            return 30;
         }
 
         sleep_microseconds(kStartupFrameDelayMicroseconds);
@@ -490,12 +505,12 @@ int run_canonical_startup_then_game() {
         playable::shutdown_renderer();
         unload_canonical_startup_packages(&packages);
         shutdown();
-        return 30;
+        return 31;
     }
 
     log(
         "DUSKLIGHT_PSP_STARTUP_TITLE_OK "
-        "logos=source opening=F_SP102/1800 "
+        "logos=source opening=F_SP102/DPCM2400@30fps/4800display "
         "title_logo=DPAN7/300 prompt=source_dpsu start_gate=1");
     playable::shutdown_renderer();
     unload_canonical_startup_packages(&packages);
