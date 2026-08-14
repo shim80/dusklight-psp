@@ -33,7 +33,7 @@ jobs:
             -o /tmp/alpha_material_state_host_test
           /tmp/alpha_material_state_host_test
 
-      - name: Restore historical first-playable validation harness
+      - name: Restore direct first-playable validation harness
         shell: bash
         run: |
           set -euo pipefail
@@ -66,11 +66,22 @@ jobs:
             dusklight-main/platforms/psp/include/dusk/psp/platform.hpp; do
             git checkout "$validation_ref" -- "$path"
           done
-          # This proof must exercise alpha-test and alpha-blend room passes.
           sed -i 's/presentation::Profile::OpaqueOnly/presentation::Profile::Game/' \
             dusklight-main/platforms/psp/src/canonical_game.cpp
           grep -Fq 'output.presentation = presentation::Profile::Game;' \
             dusklight-main/platforms/psp/src/canonical_game.cpp
+          cat > test/dusklight-psp/main.cpp <<'CPP'
+          #include "dusk/psp/canonical_game.hpp"
+          #include <pspkernel.h>
+          PSP_MODULE_INFO("DusklightPSP", 0, 1, 0);
+          PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
+          PSP_HEAP_SIZE_KB(-256);
+          int main() {
+              const int result = dusk::psp::game::run_canonical_game();
+              sceKernelExitGame();
+              return result;
+          }
+          CPP
 
       - name: Install host dependencies
         run: |
