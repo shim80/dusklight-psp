@@ -1,0 +1,23 @@
+name: Export working snapshot
+on:
+  push:
+    branches:
+      - agent/psp-pc-fidelity-startup
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package repository snapshot
+        run: |
+          tar --exclude=.git -czf "$RUNNER_TEMP/dusklight-working-snapshot.tar.gz" .
+          sha256sum "$RUNNER_TEMP/dusklight-working-snapshot.tar.gz" > "$RUNNER_TEMP/dusklight-working-snapshot.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-working-snapshot
+          path: |
+            ${{ runner.temp }}/dusklight-working-snapshot.tar.gz
+            ${{ runner.temp }}/dusklight-working-snapshot.tar.gz.sha256
+          if-no-files-found: error
