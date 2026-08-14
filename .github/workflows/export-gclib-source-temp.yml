@@ -1,0 +1,30 @@
+name: Export pinned gclib source temporary
+
+on:
+  push:
+    branches:
+      - agent/intro-fsp102-environment-mainline
+
+jobs:
+  export-source:
+    if: github.event.head_commit.message == 'Temporarily export pinned gclib source'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone and verify pinned gclib
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/LagoLunatic/gclib.git .work/gclib
+          git -C .work/gclib checkout --detach 64127742467acb633d51685b9b1798ab45bb4034
+          test "$(git -C .work/gclib rev-parse HEAD)" = 64127742467acb633d51685b9b1798ab45bb4034
+          rm -rf .work/gclib/.git
+          tar -C .work -czf gclib-64127742467acb633d51685b9b1798ab45bb4034.tar.gz gclib
+          sha256sum gclib-64127742467acb633d51685b9b1798ab45bb4034.tar.gz > gclib-source.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gclib-pinned-source
+          if-no-files-found: error
+          path: |
+            gclib-64127742467acb633d51685b9b1798ab45bb4034.tar.gz
+            gclib-source.sha256
