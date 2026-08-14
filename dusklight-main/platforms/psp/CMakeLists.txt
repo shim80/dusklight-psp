@@ -134,6 +134,7 @@ dusk_psp_library(dusk_psp_renderer
     "${DUSK_PSP_ROOT}/src/playable_render.cpp"
     "${DUSK_PSP_ROOT}/src/render_state_trace.cpp"
     "${DUSK_PSP_ROOT}/src/startup_camera.cpp"
+    "${DUSK_PSP_ROOT}/src/startup_camera_track.cpp"
     "${DUSK_PSP_ROOT}/src/actor_render.cpp"
     "${DUSK_PSP_ROOT}/src/render_queue.cpp"
 )
