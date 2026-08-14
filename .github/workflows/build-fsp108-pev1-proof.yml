@@ -70,6 +70,24 @@ jobs:
             dusklight-main/platforms/psp/src/canonical_game.cpp
           grep -Fq 'output.presentation = presentation::Profile::Game;' \
             dusklight-main/platforms/psp/src/canonical_game.cpp
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('dusklight-main/platforms/psp/src/canonical_game.cpp')
+          text = path.read_text()
+          old = '''        if (!gameplay_active && !terminal_room_error &&\n            flow.phase() == startup::SaveFlowPhase::FileSelect &&\n            (input.up_pressed || input.down_pressed ||\n             input.action_pressed || input.pause_pressed)) {'''
+          new = '''        if (!gameplay_active && !terminal_room_error &&\n            flow.phase() == startup::SaveFlowPhase::FileSelect) {'''
+          if old not in text:
+              raise SystemExit('file-select condition anchor missing')
+          text = text.replace(old, new, 1)
+          old = '            flow_input.confirm = input.action_pressed;'
+          new = '            flow_input.confirm = true;'
+          if old not in text:
+              raise SystemExit('confirm assignment anchor missing')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          grep -Fq 'flow_input.confirm = true;' \
+            dusklight-main/platforms/psp/src/canonical_game.cpp
           cat > test/dusklight-psp/main.cpp <<'CPP'
           #include "dusk/psp/canonical_game.hpp"
           #include <pspkernel.h>
