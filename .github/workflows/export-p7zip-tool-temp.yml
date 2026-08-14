@@ -1,0 +1,30 @@
+name: Export p7zip local tool temporary
+
+on:
+  push:
+    branches:
+      - agent/intro-fsp102-environment-mainline
+
+jobs:
+  export:
+    if: github.event.head_commit.message == 'Temporarily export p7zip tool for local source extraction'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Package p7zip runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+          mkdir -p payload/usr/lib payload/usr/bin
+          cp -a /usr/lib/p7zip payload/usr/lib/
+          cp -a /usr/bin/7z payload/usr/bin/
+          tar -C payload -czf p7zip-runtime.tar.gz .
+          sha256sum p7zip-runtime.tar.gz > p7zip-runtime.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p7zip-runtime-local-tool
+          path: |
+            p7zip-runtime.tar.gz
+            p7zip-runtime.tar.gz.sha256
