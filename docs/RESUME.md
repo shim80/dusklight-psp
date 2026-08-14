@@ -9,25 +9,20 @@ Read, in order:
 1. `/AGENTS.md`
 2. `/docs/STATUS.md`
 3. `/docs/COMMIT_LEDGER.md`
-4. the newest reports in `/docs/reports/`
-5. `/dusklight-main/platforms/psp/include/dusk/psp/startup_save_flow.hpp`
-6. `/dusklight-main/platforms/psp/src/startup_save_flow.cpp`
-7. `/dusklight-main/platforms/psp/include/dusk/psp/psp_controls.hpp`
-8. `/dusklight-main/platforms/psp/include/dusk/psp/first_playable_controls.hpp`
-9. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp`
-10. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_room_loader.hpp`
-11. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_common_loader.hpp`
-12. `/dusklight-main/platforms/psp/src/canonical_game.cpp`
-13. `/dusklight-main/platforms/psp/src/playable_render.cpp`
-14. `/test/canonical-runtime/startup_first_playable_host_test.cpp`
-15. `/test/startup-save-integration-host/main.cpp`
-16. `/test/psp-controls-host/main.cpp`
-17. `/test/first-playable-controls-host/main.cpp`
-18. `/test/dusklight-psp/CMakeLists.txt`
-19. `/test/dusklight-psp/README.md`
-20. `/scripts/validate-canonical-first-playable-assets.sh`
-21. `/scripts/run-canonical-first-playable.sh`
-22. `/test/getawait-heart-probe/main.cpp`
+4. `/docs/reports/202-daedalus-x64-psp-rendering-performance-research.md`
+5. the newest remaining reports in `/docs/reports/`
+6. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_assets.hpp`
+7. `/dusklight-main/platforms/psp/include/dusk/psp/canonical_startup_loader.hpp`
+8. `/dusklight-main/platforms/psp/src/canonical_startup_entry.cpp`
+9. `/dusklight-main/platforms/psp/src/playable_render.cpp`
+10. `/dusklight-main/platforms/psp/include/dusk/psp/startup_save_flow.hpp`
+11. `/dusklight-main/platforms/psp/src/startup_save_flow.cpp`
+12. `/dusklight-main/platforms/psp/include/dusk/psp/psp_controls.hpp`
+13. `/dusklight-main/platforms/psp/include/dusk/psp/first_playable_controls.hpp`
+14. `/dusklight-main/platforms/psp/src/canonical_game.cpp`
+15. `/scripts/build-dusklight-startup-assets.sh`
+16. `/scripts/run-canonical-first-playable.sh`
+17. relevant host tests for the subsystem being changed.
 
 Do not infer that a historical report's Git SHA exists in the reconstructed repository. The historical ledger distinguishes provenance from reconstructed commits.
 
@@ -35,41 +30,55 @@ Do not infer that a historical report's Git SHA exists in the reconstructed repo
 
 Bring your own legally obtained Twilight Princess game image when original assets must be regenerated. Never commit extracted or derived commercial game packages.
 
-An authorized workspace asset bundle was successfully located on 2026-08-13 and used locally for the first-playable proof. It contains the canonical F_SP108/Link/HUD packages and packaged startup assets. The assets themselves were not uploaded to GitHub.
+An authorized local asset workflow has been used to validate the first playable and the startup path. The assets themselves were not uploaded to GitHub.
 
-## 3. Latest public checkpoint
+## 3. Proven gameplay checkpoint
 
-Latest fully green canonical public proof: GitHub Actions run `31679685111`, commit `3318caf88e8ec2cdf84cebc54408dac5fc01cdea`.
-
-Canonical EBOOT SHA-256: `9fce67ba95f3ff6c3be7ce674be324711ff03e17f1986b4a7993fe8f4129d5a2`.
-
-Artifact ID: `9172983520`.
-
-The run proves host save/startup/control semantics, first-playable control tracker semantics, canonical asset preflight, Allegrex compile/link, `mips:allegrex` ELF identity, PPSSPP boot and public fail-closed behavior without proprietary assets.
-
-## 4. Asset-backed proof now achieved
-
-Using the exact run-82 EBOOT with pinned PPSSPP 1.20.4 (AppImage SHA-256 `661c098e6b7f7610171a57b7c533ce8bba6f2312b71e76d61e850461973eba21`), the local asset-backed route now reaches visible F_SP108 gameplay.
-
-Observed route:
-
-`file select -> slot creation/persist -> NewGameTransition -> F_SP108/R01/start21 -> room/actor/Link initialization -> PSP gameplay renderer`
-
-A real PPSSPP framebuffer shows Link inside F_SP108 and is committed at:
+The canonical asset-backed route reaches visible F_SP108 gameplay at `F_SP108 / room 1 / start 21 / layer 0`. A real PPSSPP framebuffer is committed at:
 
 `screenshot/dusklight-psp-f-sp108-gameplay.jpg`
 
-Analog input was exercised after the first visible frame and produced an observable Link orientation/locomotion change. This is actual asset-backed gameplay, not the synthetic startup probe.
+The gameplay renderer remains intentionally conservative while broader gameplay coverage is incomplete.
 
-The first local run exposed an old/new HUD-package contract mismatch. The preserved workspace `hud.dpui` is a valid compact DPUI v2 with original gameplay/pause sprites but without the later complete printable-ASCII glyph set. Commit `3318caf88e8ec2cdf84cebc54408dac5fc01cdea` adds a canonical-only validator that still checks package CRC/size/ranges/atlas and requires sprite IDs `0–3`, `10–20`, `30`, `40–43`; the general `validate_dpui()` remains strict.
+## 4. Startup / title checkpoint
 
-The PSP runtime marker remains:
+The real EBOOT has been exercised locally through:
 
-`DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK stage=F_SP108 room=1 start=21 actors=9 render=opaque_unlit frame=1`
+`French warning -> startup logos/progressive -> F_SP102 opening -> title model`
 
-In the current local headless PPSSPP setup, the PSP platform `log()` stream is not mirrored into the host PPSSPP stdout. Do not invent a marker observation; the accepted proof is the actual framebuffer after all fail-closed initialization gates passed.
+The F_SP102 opening now loads all nine known environment layers. Two blockers remain before the startup integration PR can leave draft:
 
-## 5. Startup/save/control semantics that must not regress
+1. multi-texture/TEV materials can render as large white/brown flats because the current PSP material fallback collapses source material composition too aggressively;
+2. the source title-logo model/animation loads but is displayed too small; recover the source/export transform contract rather than selecting an arbitrary visual scale.
+
+Do not commit a startup screenshot until these defects are corrected enough to satisfy the repository screenshot policy.
+
+## 5. DaedalusX64 PSP research checkpoint
+
+The PSP rendering/performance study is:
+
+`docs/reports/202-daedalus-x64-psp-rendering-performance-research.md`
+
+Reference repository/commit:
+
+`DaedalusX64/daedalus@4f5c6fb045358044b64173fac619db5496cc2328`
+
+The important adoption order is:
+
+1. explicit bounded J3D/TEV -> PSP GU material pass plans, with `Exact / Approximate / Unsupported` classification;
+2. instrumentation for texture residency/uploads, GU state calls, material passes, package I/O and GE waits;
+3. deterministic host-generated PSP-native/pre-swizzled textures;
+4. reclaimable EDRAM texture residency with explicit pin/lifetime policy and measured RAM fallback;
+5. applied GU-state cache;
+6. source-informed package prefetch;
+7. only after profiling: double command lists and narrow VFPU kernels;
+8. Media Engine only as an optional job queue with a CPU fallback, preferably audio/pure-data first.
+
+Do not copy Daedalus implementation code casually. Reimplement techniques against Dusklight interfaces and review attribution/license compatibility if code is ever intentionally adapted.
+
+Media Engine availability must never be required for gameplay, save/event logic or render correctness. PPSSPP can validate plumbing, but real PSP hardware is required before claiming an ME or VFPU performance gain dependent on hardware behavior.
+
+## 6. Startup/save/control semantics that must not regress
 
 - exactly three save slots;
 - up/down clamp and do not wrap;
@@ -81,37 +90,9 @@ In the current local headless PPSSPP setup, the PSP platform `log()` stream is n
 - Cross=action, L/R=camera, Triangle/Square=zoom, START=pause, Circle=cancel, D-pad=menu, SELECT=debug;
 - one-shot controls are edge-triggered.
 
-The first-playable control tracker counts effects, not raw input: movement requires displacement, camera requires runtime manual-camera state, action requires the source-prompt action counter to increment, and pause/resume require actual `Playing <-> Paused` transitions.
+## 7. Rendering rules
 
-Full asset-backed control acceptance is not closed yet. Analog locomotion is visually proven; camera/action/pause/resume still need deterministic acceptance in actual F_SP108.
-
-## 6. Canonical first-playable asset contract
-
-At this checkpoint the gameplay handoff accepts exactly `F_SP108 / room 1 / start 21 / layer 0`.
-
-Room packages:
-
-```text
-data/stages/F_SP108/R01/room.dprm
-data/stages/F_SP108/R01/room.dptx
-data/stages/F_SP108/R01/room.dpcl
-data/stages/F_SP108/R01/room.dpsc
-```
-
-Global playable packages:
-
-```text
-data/common/link.dpsk
-data/common/link.dptx
-data/common/link.dpan
-data/common/hud.dpui
-```
-
-The workspace also contains packaged startup data, including `data/startup/startup.dpst`, `title_ui.dpsu`, `file_select.dpsu`, startup logos and title model/texture/animation packages. These should be used next to replace the synthetic/public startup presentation.
-
-## 7. Rendering profile
-
-Keep the first-playable renderer deliberately conservative while gameplay is incomplete:
+Keep the gameplay path conservative:
 
 - `presentation::Profile::OpaqueOnly`;
 - `RenderProfile::KnownGoodUnlit`;
@@ -119,26 +100,25 @@ Keep the first-playable renderer deliberately conservative while gameplay is inc
 - fog off;
 - shadows off.
 
-Do not spend the next checkpoint on graphical polish.
+Material-pass work may improve source texture composition where needed for correctness, but do not turn this checkpoint into general graphical polish.
+
+Opaque submissions may only be reordered where existing order/depth tests prove invariance. Alpha-test and alpha-blend ordering remains source-derived unless separately proven equivalent.
+
+**Do not work on issue #6.** That F_SP108 alpha-tested foliage regression is separately owned.
 
 ## 8. Immediate next work
 
-1. finish deterministic asset-backed control acceptance in F_SP108 for camera, source-prompt Cross action, START pause and resume;
-2. keep the proven room+Link framebuffer path intact;
-3. wire the packaged source-faithful startup assets into the canonical driver instead of the synthetic fixture;
-4. replay `intro/opening -> title -> file select -> save -> F_SP108` in one EBOOT;
-5. add only real source-faithful UI/gameplay screenshots to `screenshot/`;
-6. then evaluate the startup branch for merge/release readiness.
+1. implement/validate the F_SP102 material-pass plan foundation without touching issue #6;
+2. identify the exact affected F_SP102 source materials and classify each planned PSP representation;
+3. rerun the real startup EBOOT and confirm the large flat material artifacts are gone;
+4. recover/fix the title-logo transform/scale contract;
+5. replay `intro/opening -> title -> file select -> save -> F_SP108` in one EBOOT;
+6. add only source-faithful visual proof;
+7. then evaluate the startup branch for merge/release readiness.
 
-## 9. Heart Piece / chest track
+Performance work after that should follow the independent issues created from report 202. Each optimization must show a measurable bottleneck and preserve behavioral/render equivalence.
 
-PR #2 (`Make Demo_Item commit source-owned`) remains draft/unmerged. It may only be promoted after one asset-backed PPSSPP run proves the complete chest lifecycle after the source-owned commit: chest visible/closed, OPEN, BOXOP/GETA/GETAWAIT, Heart Piece visibility, inventory unchanged before acknowledgement, `dead()` followed by exactly one source `execItemGet()`, persistence/recreation and clean Link locomotion, with marker and real screenshot.
-
-PR #4 (`Fix PSP import stub ordering`) was independently validated and merged into `agent/source-demo-item-commit` as `76e3dbedb56970283bfcee4225bf41cd4106836d`.
-
-PR #5 (`Add BRK runtime plumbing for source item effects`) remains draft. Its compile/smoke proof is green, but it still lacks a dedicated functional BRK gate and asset-backed Heart Piece BRK/TEV rendering proof.
-
-## 10. Release gate
+## 9. Release gate
 
 Do not publish the first public EBOOT release until all are ready together:
 
@@ -148,4 +128,4 @@ Do not publish the first public EBOOT release until all are ready together:
 - beginning of the game in F_SP108;
 - PSP-adapted controls sufficient for user testing.
 
-Rendering polish remains secondary until gameplay completion.
+The release-ready EBOOT must be published as a GitHub Release asset, not merely as a CI ZIP.
