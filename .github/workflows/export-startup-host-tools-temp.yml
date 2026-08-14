@@ -1,0 +1,83 @@
+name: Export pinned startup host tools temporary
+
+on:
+  push:
+    branches:
+      - agent/intro-fsp102-environment-mainline
+
+jobs:
+  export-tools:
+    if: github.event.head_commit.message == 'Temporarily export pinned startup host tools'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl zstd clang cargo
+      - name: Recover exact historical host tool source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .work/recovered
+          git show 4df42572f9087472e3eb4891583971aad8dcff88:source-overlay/dusklight-psp-code-overlay.tar.gz.b64 > .work/overlay.tar.gz.b64
+          python3 - <<'PY'
+          import base64, io, tarfile, zlib
+          from pathlib import Path
+          source=Path('.work/overlay.tar.gz.b64').read_bytes()
+          padding=b'='*((4-len(source)%4)%4)
+          decoded=base64.b64decode(source+padding, validate=False)
+          assert decoded[:3]==b'\x1f\x8b\x08' and decoded[3]==0
+          stream=zlib.decompressobj(-zlib.MAX_WBITS)
+          tar_bytes=stream.decompress(decoded[10:])+stream.flush()
+          assert stream.eof and len(tar_bytes)%512==0
+          with tarfile.open(fileobj=io.BytesIO(tar_bytes),mode='r:') as a:
+              names=[m.name for m in a.getmembers()]
+              assert any('/tools/dusk_link_loader_probe' in n for n in names)
+              assert any('/tools/dusk_startup_builder' in n for n in names)
+              a.extractall('.work/recovered',filter='data')
+          PY
+          PROBE_DIR="$(find .work/recovered -type d -path '*/tools/dusk_link_loader_probe' -print -quit)"
+          BUILDER_DIR="$(find .work/recovered -type d -path '*/tools/dusk_startup_builder' -print -quit)"
+          test -n "$PROBE_DIR" && test -n "$BUILDER_DIR"
+          printf 'PROBE_DIR=%s\nBUILDER_DIR=%s\n' "$PROBE_DIR" "$BUILDER_DIR" >> "$GITHUB_ENV"
+      - name: Assemble pinned source and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/TwilitRealm/dusklight.git .work/full
+          git -C .work/full checkout --detach 1bae8a5e6a812217ca33ba533e707ecfa64b1553
+          test "$(git -C .work/full rev-parse HEAD^{tree})" = dbd0de5c47808b5a78daa24c391166936bd6acc5
+          rm -rf .work/full/platforms/psp .work/full/scripts .work/full/toolchain
+          cp -a dusklight-main/platforms/psp .work/full/platforms/psp
+          cp -a scripts .work/full/scripts
+          cp -a toolchain .work/full/toolchain
+          mkdir -p .work/full/tools
+          cp -a "$PROBE_DIR" .work/full/tools/dusk_link_loader_probe
+          cp -a "$BUILDER_DIR" .work/full/tools/dusk_startup_builder
+          cd .work/full
+          ./scripts/bootstrap-link-loader-sources.sh
+      - name: Build host conversion tools
+        working-directory: .work/full
+        env:
+          CC: /usr/bin/clang
+          CXX: /usr/bin/clang++
+        run: |
+          set -euo pipefail
+          ./scripts/build-link-loader-probe.sh
+          cmake -S tools/dusk_startup_builder -B build/host/startup-builder -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host/startup-builder -j 4
+          test -x build/host/link-loader/probe/dusk_link_loader_probe
+          test -x build/host/startup-builder/dusk_startup_builder
+          sha256sum build/host/link-loader/probe/dusk_link_loader_probe build/host/startup-builder/dusk_startup_builder | tee build/host/asset-tools.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-startup-host-tools
+          if-no-files-found: error
+          path: |
+            .work/full/build/host/link-loader/probe/dusk_link_loader_probe
+            .work/full/build/host/startup-builder/dusk_startup_builder
+            .work/full/build/host/asset-tools.sha256
