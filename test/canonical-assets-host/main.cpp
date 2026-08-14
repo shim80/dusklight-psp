@@ -62,6 +62,8 @@ int main() {
                 "title_logo_texture_path") ||
         !expect(std::strcmp(startup.title_logo_animation, "data/startup/title_logo.dpan") == 0,
                 "title_logo_animation_path") ||
+        !expect(std::strcmp(startup.title_camera, "data/startup/title_camera.dpcm") == 0,
+                "title_camera_path") ||
         !expect(
             game::resolve_canonical_startup_assets(nullptr) ==
                 game::CanonicalAssetError::NullOutput,
@@ -135,8 +137,8 @@ int main() {
     }
 
     std::puts(
-        "CANONICAL_STARTUP_ASSETS_HOST_OK paths=9 "
-        "sequence=DPST ui=DPSU title=DPRM,DPTX,DPAN fail_closed=1");
+        "CANONICAL_STARTUP_ASSETS_HOST_OK paths=10 "
+        "sequence=DPST ui=DPSU title=DPRM,DPTX,DPAN camera=DPCM fail_closed=1");
     std::puts(
         "CANONICAL_ASSETS_HOST_OK stage=F_SP108 room=1 start=21 layer=0 "
         "paths=4 fail_closed=1");
