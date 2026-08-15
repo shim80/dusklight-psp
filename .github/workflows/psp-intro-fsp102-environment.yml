@@ -5,6 +5,7 @@ on:
     branches:
       - agent/intro-fsp102-environment-mainline
       - codex/playable-milestone
+      - agent/recover-codex-first-playable
   pull_request:
   workflow_dispatch:
 
