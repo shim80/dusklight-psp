@@ -80,13 +80,17 @@ jobs:
           set -euo pipefail
           python3 -m py_compile tools/demo38_camera_export.py tools/fsp102_environment_export.py tools/startup_logo_ui_export.py tools/title_logo_export.py tools/title_prompt_ui_export.py
           bash -n scripts/bootstrap-fsp102-exporter.sh scripts/build-demo38-camera-assets.sh scripts/build-dusklight-psp-assets.sh scripts/build-dusklight-startup-assets.sh scripts/build-fsp102-environment-assets.sh
-          rm -rf .recovery
+          rm -rf tools/__pycache__ .recovery
+          # The linked Actions token cannot publish workflow-file changes. The
+          # recovered PSP workflow is restored separately through the GitHub
+          # connector after this source checkpoint is pushed.
+          rm -f .github/workflows/psp-intro-fsp102-environment.yml
           rm -f .github/workflows/apply-codex-recovery.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          if git diff --cached --name-only | grep -E '\.(iso|arc|bmd|bti|bck|stb|dprm|dptx|dpan|dpsu|dpcm|pbp|elf|7z)$'; then
-            echo 'commercial-derived or binary asset path unexpectedly staged' >&2
+          if git diff --cached --name-only | grep -E '\.(iso|arc|bmd|bti|bck|stb|dprm|dptx|dpan|dpsu|dpcm|pbp|elf|7z|pyc)$'; then
+            echo 'commercial-derived or generated binary path unexpectedly staged' >&2
             exit 1
           fi
           git commit -m 'Recover Codex first-playable checkpoint'
