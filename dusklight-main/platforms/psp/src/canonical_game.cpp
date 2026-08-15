@@ -238,8 +238,8 @@ playable::RealRoomRenderInput make_render_input(
         ? &g_environment_runtime.material
         : nullptr;
     output.shadows = nullptr;
-    output.render_profile = playable::RenderProfile::CandidateGame;
-    output.lighting_mode = playable::LightingMode::SourceApprox;
+    output.render_profile = playable::RenderProfile::KnownGoodUnlit;
+    output.lighting_mode = playable::LightingMode::Off;
     output.fog_mode = playable::FogMode::Source;
     output.shadow_mode = playable::ShadowMode::Off;
     return output;
