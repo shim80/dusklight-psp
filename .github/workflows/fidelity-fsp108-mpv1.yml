@@ -1,0 +1,101 @@
+name: F_SP108 MPV1 runtime guard iteration
+
+on:
+  push:
+    branches:
+      - agent/psp-pc-fidelity-startup
+    paths:
+      - .github/workflows/fidelity-fsp108-mpv1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Keep unsupported missing-alpha XLU suppressed with MPV1
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('dusklight-main/platforms/psp/src/playable_render.cpp')
+          s = p.read_text()
+          old = '        if (!has_plan && wanted == 2 && fallback_needs_missing_tev_alpha) {\n            continue;\n        }\n'
+          new = (
+              '        if (wanted == 2 && fallback_needs_missing_tev_alpha &&\n'
+              '            (!has_plan ||\n'
+              '             plan.fidelity == room::MaterialPassFidelity::Unsupported)) {\n'
+              '            continue;\n'
+              '        }\n'
+          )
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one alpha guard, got {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          python3 -m py_compile tools/room_material_pass_upgrade.py
+          git diff --check
+          git diff -- dusklight-main/platforms/psp/src/playable_render.cpp
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl xz-utils
+
+      - name: Bootstrap pinned PSP toolchain
+        run: ./scripts/bootstrap-repro.sh
+
+      - name: Build product EBOOT
+        run: |
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake -S test/dusklight-psp -B .work/build/fsp108-mpv1 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/fsp108-mpv1 -j 4
+          "$PSPDEV/bin/psp-objdump" -f .work/build/fsp108-mpv1/dusklight_psp.elf | tee .work/fsp108-mpv1-objdump.log
+          grep -F 'architecture: mips:allegrex' .work/fsp108-mpv1-objdump.log
+          sha256sum .work/build/fsp108-mpv1/EBOOT.PBP | tee .work/fsp108-mpv1-eboot.sha256
+
+      - name: Build direct-game capture harness
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('dusklight-main/platforms/psp/src/canonical_startup_entry.cpp')
+          s = p.read_text()
+          needle = 'int run_canonical_startup_then_game() {\n'
+          if s.count(needle) != 1:
+              raise SystemExit('startup entry contract changed')
+          p.write_text(s.replace(needle, needle + '    // CI framebuffer harness only; restored before commit.\n    return run_canonical_game();\n', 1))
+          PY
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake -S test/dusklight-psp -B .work/build/fsp108-mpv1-harness -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/fsp108-mpv1-harness -j 4
+          git checkout -- dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
+          git diff --check
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: psp-fidelity-fsp108-mpv1
+          path: |
+            .work/build/fsp108-mpv1/EBOOT.PBP
+            .work/build/fsp108-mpv1-harness/EBOOT.PBP
+            .work/fsp108-mpv1-eboot.sha256
+            .work/fsp108-mpv1-objdump.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish runtime guard and remove iteration workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dusklight-main/platforms/psp/src/playable_render.cpp
+          git rm .github/workflows/fidelity-fsp108-mpv1.yml
+          git diff --cached --check
+          git commit -m 'Respect unsupported F_SP108 MPV1 alpha plans'
+          git push origin HEAD:agent/psp-pc-fidelity-startup
