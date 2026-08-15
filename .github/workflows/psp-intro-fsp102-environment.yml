@@ -1,0 +1,110 @@
+name: PSP intro F_SP102 environment checkpoint
+
+on:
+  push:
+    branches:
+      - agent/intro-fsp102-environment-mainline
+      - codex/playable-milestone
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  intro-fsp102-environment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl xz-utils xvfb libgl1 libegl1 mesa-vulkan-drivers pulseaudio
+
+      - name: Verify source-safe exporter and startup contract
+        run: |
+          python3 -m py_compile tools/fsp102_environment_export.py tools/demo38_camera_export.py tools/title_logo_export.py
+          bash -n scripts/bootstrap-fsp102-exporter.sh
+          bash -n scripts/build-fsp102-environment-assets.sh
+          bash -n scripts/build-demo38-camera-assets.sh
+          bash -n scripts/build-dusklight-startup-assets.sh
+          grep -F 'EXPECTED_SOURCE_FRAMES = 2400' tools/demo38_camera_export.py
+          grep -F 'EXPECTED_SAMPLE_COUNT = 2401' tools/demo38_camera_export.py
+          cmake -S test/startup-camera-host -B .work/build/startup-camera-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/startup-camera-host -j 4
+          ./.work/build/startup-camera-host/startup_camera_host_test | tee .work/startup-camera-host.log
+          grep -F 'STARTUP_CAMERA_TRACK_HOST_OK source_fps=30 source_frames=2 samples=3 crc_fail_closed=1' .work/startup-camera-host.log
+          cmake -S test/canonical-assets-host -B .work/build/canonical-assets-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/canonical-assets-host -j 4
+          ./.work/build/canonical-assets-host/canonical_assets_host_test | tee .work/canonical-assets-host.log
+          grep -F 'CANONICAL_STARTUP_ASSETS_HOST_OK paths=10 sequence=DPST ui=DPSU title=DPRM,DPTX,DPAN camera=DPCM fail_closed=1' .work/canonical-assets-host.log
+          grep -F 'data/startup/fsp102_environment.dprm' dusklight-main/platforms/psp/src/canonical_assets.cpp
+          grep -F 'data/startup/fsp102_environment.dptx' dusklight-main/platforms/psp/src/canonical_assets.cpp
+          grep -A2 -F 'case startup::Segment::ProgressivePrompt:' dusklight-main/platforms/psp/src/canonical_startup_entry.cpp | grep -F 'channel = 3;'
+          cmake -S test/material-pass-plan-host -B .work/build/material-pass-plan-host -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/material-pass-plan-host -j 4
+          ./.work/build/material-pass-plan-host/material_pass_plan_host_test | tee .work/material-pass-plan-host.log
+          grep -F 'MATERIAL_PASS_PLAN_HOST_OK plans=1 passes=2 negative_cases=2' .work/material-pass-plan-host.log
+          grep -F 'sceGumPerspective(45.0f, 480.0f / 272.0f, 1.0f, 100000.0f);' dusklight-main/platforms/psp/src/playable_render.cpp
+          grep -F 'model.matrix[11] = -430.0f;' dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
+          grep -F 'model.scale[0] = -1.0f;' dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
+          grep -F 'DUSKLIGHT_STARTUP_AUTOMATION_V1' dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
+          grep -F 'DUSKLIGHT_PSP_STARTUP_SAVE_GAMEPLAY_OK' dusklight-main/platforms/psp/src/canonical_game.cpp
+
+      - name: Bootstrap pinned PSP toolchain and PPSSPP
+        run: ./scripts/bootstrap-repro.sh
+
+      - name: Build reconstructed canonical Allegrex EBOOT
+        run: |
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake -S test/dusklight-psp -B .work/build/dusklight-psp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/dusklight-psp -j 4
+          test -f .work/build/dusklight-psp/EBOOT.PBP
+          test -f .work/build/dusklight-psp/dusklight_psp.elf
+          "$PSPDEV/bin/psp-objdump" -f .work/build/dusklight-psp/dusklight_psp.elf | tee .work/canonical-objdump.log
+          grep -F 'architecture: mips:allegrex' .work/canonical-objdump.log
+          sha256sum .work/build/dusklight-psp/EBOOT.PBP | tee .work/canonical-eboot.sha256
+
+      - name: Smoke EBOOT in pinned PPSSPP
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set -euo pipefail
+          PPSSPP="$GITHUB_WORKSPACE/.tools/ppsspp/PPSSPP-v1.20.4-anylinux-x86_64.AppImage"
+          mkdir -p .work/ppsspp-app
+          cd .work/ppsspp-app
+          "$PPSSPP" --appimage-extract >/dev/null
+          cd "$GITHUB_WORKSPACE"
+          pulseaudio --start --exit-idle-time=-1 --log-target=file:"$GITHUB_WORKSPACE/.work/pulseaudio.log" || true
+          sleep 2
+          Xvfb :99 -screen 0 1280x720x24 >.work/xvfb.log 2>&1 &
+          XVFB_PID=$!
+          export DISPLAY=:99
+          sleep 2
+          .work/ppsspp-app/squashfs-root/AppRun .work/build/dusklight-psp/EBOOT.PBP >.work/ppsspp.log 2>&1 &
+          PPSSPP_PID=$!
+          sleep 8
+          cat .work/ppsspp.log || true
+          grep -F 'Booted .work/build/dusklight-psp/EBOOT.PBP' .work/ppsspp.log
+          kill "$PPSSPP_PID" 2>/dev/null || true
+          kill "$XVFB_PID" 2>/dev/null || true
+          pulseaudio --kill 2>/dev/null || true
+
+      - name: Upload checkpoint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-psp-intro-fsp102-environment-checkpoint
+          if-no-files-found: warn
+          path: |
+            .work/build/dusklight-psp/EBOOT.PBP
+            .work/build/dusklight-psp/dusklight_psp.elf
+            .work/canonical-eboot.sha256
+            .work/canonical-objdump.log
+            .work/canonical-assets-host.log
+            .work/material-pass-plan-host.log
+            .work/ppsspp.log
+            .work/xvfb.log
+            .work/pulseaudio.log
