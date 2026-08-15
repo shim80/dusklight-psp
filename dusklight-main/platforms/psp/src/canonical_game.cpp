@@ -39,7 +39,37 @@ constexpr std::uint32_t kExpectedSourceActors = 599;
 constexpr std::uint32_t kExpectedEssentialActors = 9;
 constexpr std::uint32_t kFrameDelayMicroseconds = 33333;
 constexpr std::uint32_t kCommandListBytes = 256 * 1024;
+constexpr std::uint32_t kAutomationCaptureBytes = 512 * 272 * 2;
 alignas(16) std::uint8_t g_command_list[kCommandListBytes] = {};
+alignas(16) std::uint8_t g_automation_capture[kAutomationCaptureBytes] = {};
+
+bool automation_requested() {
+    constexpr char kRequest[] = "DUSKLIGHT_STARTUP_AUTOMATION_V1\n";
+    char path[256] = {};
+    char payload[sizeof(kRequest)] = {};
+    std::uint32_t size = 0;
+    return make_game_path("STARTUP.AUTOMATION.REQUEST", path, sizeof(path)) &&
+        read_file(path, payload, sizeof(payload), &size) &&
+        size == sizeof(kRequest) - 1 &&
+        std::memcmp(payload, kRequest, sizeof(kRequest) - 1) == 0;
+}
+
+bool write_automation_playable_proof() {
+    char frame_path[256] = {};
+    char marker_path[256] = {};
+    constexpr char kMarker[] =
+        "DUSKLIGHT_PSP_STARTUP_SAVE_GAMEPLAY_OK\n"
+        "route=intro,start,file_select,new_game,F_SP108\n"
+        "framebuffer=PLAYABLE.5650\n";
+    return make_game_path("PLAYABLE.5650", frame_path, sizeof(frame_path)) &&
+        make_game_path("PLAYABLE.OK", marker_path, sizeof(marker_path)) &&
+        playable::capture_playable_frame_5650(
+            g_automation_capture, sizeof(g_automation_capture)) &&
+        write_file(
+            frame_path, g_automation_capture,
+            static_cast<std::uint32_t>(sizeof(g_automation_capture))) &&
+        write_file(marker_path, kMarker, sizeof(kMarker) - 1);
+}
 
 void write_u16(std::uint8_t* output, std::uint16_t value) {
     output[0] = static_cast<std::uint8_t>(value);
@@ -423,6 +453,8 @@ int run_canonical_game() {
     bool terminal_room_error = false;
     bool first_render_proven = false;
     bool controls_proven = false;
+    const bool should_automate_route = automation_requested();
+    bool automation_complete = false;
     save::StartContext handoff = {};
 
     draw_file_select(
@@ -447,12 +479,12 @@ int run_canonical_game() {
 
         if (!gameplay_active && !terminal_room_error &&
             flow.phase() == startup::SaveFlowPhase::FileSelect &&
-            (input.up_pressed || input.down_pressed ||
+            (should_automate_route || input.up_pressed || input.down_pressed ||
              input.action_pressed || input.pause_pressed)) {
             startup::SaveFlowInput flow_input = {};
             flow_input.up = input.up_pressed;
             flow_input.down = input.down_pressed;
-            flow_input.confirm = input.action_pressed;
+            flow_input.confirm = input.action_pressed || should_automate_route;
             flow_input.start = input.pause_pressed;
             if (!flow.tick(flow_input)) {
                 draw_file_select(flow, "SAVE FLOW ERROR");
@@ -543,6 +575,21 @@ int run_canonical_game() {
                     first_render_proven = true;
                     arm_first_playable_control_proof(
                         &control_proof, runtime.state);
+                    if (should_automate_route) {
+                        if (!write_automation_playable_proof()) {
+                            if (renderer_active) {
+                                playable::shutdown_renderer();
+                                renderer_active = false;
+                            }
+                            draw_room_error(
+                                handoff, "automation capture",
+                                "frame or marker write failed");
+                            gameplay_active = false;
+                            terminal_room_error = true;
+                        } else {
+                            automation_complete = true;
+                        }
+                    }
                 } else if (!controls_proven &&
                            first_playable_controls_complete(control_proof)) {
                     log(
@@ -552,6 +599,10 @@ int run_canonical_game() {
                     controls_proven = true;
                 }
             }
+        }
+
+        if (automation_complete) {
+            break;
         }
 
         sleep_microseconds(kFrameDelayMicroseconds);

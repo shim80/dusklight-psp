@@ -699,3 +699,15 @@ target_compile_features(alpha_material_state_host_test PRIVATE cxx_std_20)
 target_compile_options(alpha_material_state_host_test PRIVATE
     -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
 )
+
+add_executable(material_pass_plan_host_test
+    material_pass_plan_host_test.cpp
+    "${DUSK_PSP_ROOT}/src/room_package.cpp"
+)
+target_include_directories(material_pass_plan_host_test PRIVATE
+    "${DUSK_PSP_ROOT}/include"
+)
+target_compile_features(material_pass_plan_host_test PRIVATE cxx_std_20)
+target_compile_options(material_pass_plan_host_test PRIVATE
+    -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
+)

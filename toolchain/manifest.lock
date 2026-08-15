@@ -127,3 +127,37 @@ installed_filename = ""
 sha256 = "pending"
 size_approx_mb = 1.0
 install_dir = ".tools/psplinkusb"
+
+[[tool]]
+id = "gclib-source"
+status = "required"
+version = "64127742467acb633d51685b9b1798ab45bb4034"
+tag = "commit-64127742467acb633d51685b9b1798ab45bb4034"
+source_url = "https://github.com/LagoLunatic/gclib"
+download_url = "https://api.github.com/repos/shim80/dusklight-psp/actions/artifacts/9214661573/zip"
+archive = "gclib-6412774-source-temp.zip"
+archive_format = "zip+tar.gz"
+archive_root = "."
+installed_filename = ""
+sha256 = "73a6b473b8e940042be8a92b85c55f692bf4d433411406bfb972261c0020c56b"
+inner_sha256 = "e2452c0e0f2cb37ec5b6bb37b1a1b494cf0ef5c1180f08955fc293f53e0dfa57"
+size_approx_mb = 0.081
+install_dir = ".tools/sources/gclib/64127742467acb633d51685b9b1798ab45bb4034"
+license = "MIT"
+provenance_run = "https://github.com/shim80/dusklight-psp/actions/runs/31789021852"
+
+[[tool]]
+id = "github-cli-macos-arm64"
+status = "optional"
+version = "2.94.0"
+tag = "v2.94.0"
+source_url = "https://github.com/cli/cli"
+download_url = "https://github.com/cli/cli/releases/download/v2.94.0/gh_2.94.0_macOS_arm64.zip"
+archive = "gh_2.94.0_macOS_arm64.zip"
+archive_format = "zip"
+archive_root = "gh_2.94.0_macOS_arm64"
+installed_filename = "bin/gh"
+sha256 = "4f9bc1a5e77500737290a307b40b4c396a4d23729f55340f2a83f414410165a1"
+size_approx_mb = 13.8
+install_dir = ".tools/github-cli/2.94.0/gh_2.94.0_macOS_arm64"
+license = "MIT"

@@ -22,6 +22,7 @@ DOOR="$(assert_project_path "build/assets/original-door")"
 SPINNER_SWITCH="$(assert_project_path "build/assets/spinner-switch")"
 TBOX="$(assert_project_path "build/assets/original-tbox")"
 STARTUP="$(assert_project_path "build/assets/dusklight-startup")"
+FSP102="$(assert_project_path "build/assets/fsp102-environment")"
 
 ensure_startup_assets() {
   local manifest="$STARTUP/STARTUP.MANIFEST"
@@ -31,7 +32,7 @@ ensure_startup_assets() {
   fi
   for package in \
     startup.dpst startup_logos.dpsu title_ui.dpsu \
-    file_select.dpsu \
+    file_select.dpsu title_camera.dpcm \
     title_room.dprm title_room.dptx \
     title_logo.dprm title_logo.dptx title_logo.dpan \
     fsp108_room.dprm fsp108_room.dptx \
@@ -45,6 +46,22 @@ ensure_startup_assets() {
     actual="$(sha256_file "$STARTUP/$package")"
     [ "$actual" = "$expected" ] ||
       die "empreinte startup invalide : $package"
+  done
+}
+
+ensure_fsp102_environment_assets() {
+  if [ ! -s "$FSP102/fsp102_environment.dprm" ] ||
+     [ ! -s "$FSP102/fsp102_environment.dptx" ]; then
+    "$SCRIPT_DIR/build-fsp102-environment-assets.sh"
+  fi
+  local expected actual package
+  for package in fsp102_environment.dprm fsp102_environment.dptx; do
+    expected="$(awk -v file="$package" '$2 ~ ("/" file "$") {print $1}' \
+      "$FSP102/FSP102_ENVIRONMENT.SHA256")"
+    [ -n "$expected" ] || die "empreinte F_SP102 absente : $package"
+    actual="$(sha256_file "$FSP102/$package")"
+    [ "$actual" = "$expected" ] ||
+      die "empreinte F_SP102 invalide : $package"
   done
 }
 
@@ -68,11 +85,15 @@ prepare_tree() {
   done
   for package in \
     startup.dpst startup_logos.dpsu title_ui.dpsu \
-    file_select.dpsu \
+    file_select.dpsu title_camera.dpcm \
     title_room.dprm title_room.dptx \
     title_logo.dprm title_logo.dptx title_logo.dpan; do
     cp -- "$STARTUP/$package" "$destination/data/startup/$package"
   done
+  cp -- "$FSP102/fsp102_environment.dprm" \
+    "$destination/data/startup/fsp102_environment.dprm"
+  cp -- "$FSP102/fsp102_environment.dptx" \
+    "$destination/data/startup/fsp102_environment.dptx"
   printf '%s\n' \
     "owner=global" \
     "source=data/common/hud.dpui" \
@@ -242,6 +263,7 @@ manifest_entry() {
 }
 
 ensure_startup_assets
+ensure_fsp102_environment_assets
 "$SCRIPT_DIR/build-first-room-transition-assets.sh"
 rm -rf -- "$ACTOR"
 safe_mkdir build/assets/original-rendered-actor
