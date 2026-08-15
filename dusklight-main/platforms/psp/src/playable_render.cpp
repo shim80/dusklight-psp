@@ -1100,6 +1100,19 @@ void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
         room::MaterialPassPlan plan = {};
         const bool has_plan = room::read_room_material_pass_plan(
             texture_package, source_material, &plan) == room::PackageError::Ok;
+        room::AlphaMaterialState source_alpha = {};
+const bool has_source_alpha = room::read_room_alpha_material_state(
+    texture_package, source_material, &source_alpha) ==
+    room::PackageError::Ok;
+// Source XLU materials frequently depend on TEV/texture stages that a
+// single PSP fallback pass cannot reproduce. Do not turn those into
+// opaque white sheets: keep them hidden until MPV1 provides a bounded
+// pass plan. Source-alpha overlays in the OPAQUE draw buffer (for
+// example terrain/foliage edge layers) still render normally.
+if (!has_plan && wanted == 2 && has_source_alpha &&
+    source_alpha.draw_buffer == 1) {
+    continue;
+}
         const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
         for (std::uint32_t pass_index = 0;
              pass_index < pass_count; ++pass_index) {
