@@ -28,16 +28,14 @@ REASON_TOO_MANY_STAGES = 1
 REASON_UNSUPPORTED_TEV = 3
 EFFECT_MODULATE = 0
 EFFECT_REPLACE = 1
-EFFECT_ADD = 2
 COLOR_RGBA = 1
 BLEND_SOURCE = 0
-BLEND_ADDITIVE = 2
+BLEND_ALPHA = 1
 BLEND_MULTIPLY = 4
 ALPHA_BLEND_CLASS = 2
 MULTIPLY_CLASS = 4
 GX_BLEND = 1
 GX_SRC_ALPHA = 4
-GX_ONE = 1
 
 
 def align(value: int, boundary: int = 16) -> int:
@@ -119,7 +117,6 @@ def upgrade(blob: bytes) -> bytes:
         depth_write = blob[pev + 6] != 0
         blend_mode = blob[pev + 13]
         blend_src = blob[pev + 14]
-        blend_dst = blob[pev + 15]
         texture_count = min(blob[pev + 17], 8)
         identities_complete = blob[pev + 18] != 0
         texture_ids = [u16(blob, pev + 20 + index * 2) for index in range(texture_count)]
@@ -154,8 +151,12 @@ def upgrade(blob: bytes) -> bytes:
         if len(pass_ids) > 1:
             if material_class == MULTIPLY_CLASS:
                 effect, blend = EFFECT_REPLACE, BLEND_MULTIPLY
-            elif blend_mode == GX_BLEND and blend_src == GX_SRC_ALPHA and blend_dst == GX_ONE:
-                effect, blend = EFFECT_ADD, BLEND_ADDITIVE
+            elif blend_mode == GX_BLEND and blend_src == GX_SRC_ALPHA:
+                # GX TEV can synthesize alpha before an additive PE blend. The
+                # PSP has no equivalent combiner here; a second SRC_ALPHA pass
+                # keeps the recovered F_SP108 foam translucent instead of
+                # saturating it into a white sheet.
+                effect, blend = EFFECT_MODULATE, BLEND_ALPHA
             else:
                 effect, blend = EFFECT_REPLACE, BLEND_MULTIPLY
             write_pass(output, plan + 8 + PASS_STRIDE, pass_ids[1], effect, blend, False)
