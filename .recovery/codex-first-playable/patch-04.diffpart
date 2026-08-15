@@ -1,0 +1,220 @@
++        ScePspFVector3 title_center = {0.0f, 0.0f, 0.0f};
++        ScePspFVector3 title_up = {0.0f, 1.0f, 0.0f};
++        sceGumMatrixMode(GU_VIEW);
++        sceGumLoadIdentity();
++        sceGumLookAt(&title_eye, &title_center, &title_up);
++        draw_static_model_bucket(title_model, 0xfffeu, 0, metrics);
++        draw_static_model_bucket(title_model, 0xfffeu, 1, metrics);
+         draw_static_model_bucket(title_model, 0xfffeu, 2, metrics);
+     }
+     if (ui_channel != 0xffffu) {
+diff --git a/dusklight-main/platforms/psp/src/room_package.cpp b/dusklight-main/platforms/psp/src/room_package.cpp
+index 7246b49..142a583 100644
+--- a/dusklight-main/platforms/psp/src/room_package.cpp
++++ b/dusklight-main/platforms/psp/src/room_package.cpp
+@@ -21,6 +21,14 @@ constexpr std::uint32_t kAlphaMaterialCountOffset = 76;
+ constexpr std::uint32_t kAlphaMaterialFlagsOffset = 80;
+ constexpr std::uint32_t kAlphaMaterialRecordSize = 40;
+ constexpr std::uint32_t kAlphaMaterialMagic = 0x31564550u;  // PEV1
++constexpr std::uint32_t kMaterialPassHeaderMagicOffset = 84;
++constexpr std::uint32_t kMaterialPassTableOffsetOffset = 88;
++constexpr std::uint32_t kMaterialPassStrideOffset = 92;
++constexpr std::uint32_t kMaterialPassCountOffset = 96;
++constexpr std::uint32_t kMaterialPassFlagsOffset = 100;
++constexpr std::uint32_t kMaterialPassRecordSize = 48;
++constexpr std::uint32_t kMaterialPassItemSize = 20;
++constexpr std::uint32_t kMaterialPassMagic = 0x3156504du;  // MPV1
+ 
+ bool range_valid(
+     std::uint32_t offset,
+@@ -218,7 +226,7 @@ PackageError validate_dprm(
+ 
+ PackageError validate_room_dptx(
+     const void* source, std::uint32_t size, PackageView* view) {
+-    const PackageError base = validate_base(source, size, "DPTX", view, 2);
++    const PackageError base = validate_base(source, size, "DPTX", view, 3);
+     if (base != PackageError::Ok) {
+         return base;
+     }
+@@ -324,6 +332,49 @@ PackageError validate_room_dptx(
+             }
+         }
+     }
++    if (read_u16(bytes + 4) >= 3) {
++        const std::uint32_t plan_table =
++            read_u32(bytes + kMaterialPassTableOffsetOffset);
++        const std::uint32_t plan_stride =
++            read_u32(bytes + kMaterialPassStrideOffset);
++        const std::uint32_t plan_count =
++            read_u32(bytes + kMaterialPassCountOffset);
++        if (read_u32(bytes + kMaterialPassHeaderMagicOffset) !=
++                kMaterialPassMagic ||
++            read_u32(bytes + kMaterialPassFlagsOffset) != 1 ||
++            plan_stride != kMaterialPassRecordSize ||
++            plan_count != materials ||
++            !range_valid(plan_table, plan_count, plan_stride, size)) {
++            return PackageError::Layout;
++        }
++        for (std::uint32_t index = 0; index < plan_count; ++index) {
++            const std::uint8_t* plan =
++                bytes + plan_table + index * plan_stride;
++            if (read_u16(plan) != index || plan[2] > 2 || plan[3] > 4 ||
++                plan[4] == 0 || plan[4] > kMaximumMaterialPasses) {
++                return PackageError::Layout;
++            }
++            for (std::uint32_t pass_index = 0;
++                 pass_index < plan[4]; ++pass_index) {
++                const std::uint8_t* pass =
++                    plan + 8 + pass_index * kMaterialPassItemSize;
++                const bool use_texture = (pass[5] & 2u) != 0;
++                if (pass[2] > 1 || pass[3] > 1 || pass[4] > 4 ||
++                    (pass[5] & ~3u) != 0 ||
++                    (use_texture && read_u16(pass) >= textures) ||
++                    (!use_texture && read_u16(pass) != 0xffffu) ||
++                    (pass_index != 0 && (pass[5] & 1u) != 0)) {
++                    return PackageError::Layout;
++                }
++            }
++            const std::uint8_t* first_pass = plan + 8;
++            if ((first_pass[5] & 2u) != 0 &&
++                read_u16(first_pass) !=
++                    read_u16(bytes + material_offset + index * material_stride)) {
++                return PackageError::Texture;
++            }
++        }
++    }
+     return PackageError::Ok;
+ }
+ 
+@@ -378,6 +429,53 @@ PackageError read_room_alpha_material_state(
+     return PackageError::Ok;
+ }
+ 
++PackageError read_room_material_pass_plan(
++    const PackageView& view,
++    std::uint16_t material_id,
++    MaterialPassPlan* plan) {
++    if (view.bytes == nullptr || plan == nullptr ||
++        read_u16(view.bytes + 4) < 3 ||
++        read_u32(view.bytes + kMaterialPassHeaderMagicOffset) !=
++            kMaterialPassMagic ||
++        read_u32(view.bytes + kMaterialPassStrideOffset) !=
++            kMaterialPassRecordSize ||
++        material_id >= read_u32(view.bytes + kMaterialPassCountOffset)) {
++        return PackageError::Material;
++    }
++    const std::uint32_t table =
++        read_u32(view.bytes + kMaterialPassTableOffsetOffset);
++    const std::uint32_t offset =
++        table + static_cast<std::uint32_t>(material_id) *
++                    kMaterialPassRecordSize;
++    if (offset > view.size || kMaterialPassRecordSize > view.size - offset) {
++        return PackageError::Range;
++    }
++    const std::uint8_t* item = view.bytes + offset;
++    if (read_u16(item) != material_id || item[2] > 2 || item[3] > 4 ||
++        item[4] == 0 || item[4] > kMaximumMaterialPasses) {
++        return PackageError::Layout;
++    }
++    *plan = {};
++    plan->source_material_id = material_id;
++    plan->fidelity = static_cast<MaterialPassFidelity>(item[2]);
++    plan->reason = static_cast<MaterialFallbackReason>(item[3]);
++    plan->pass_count = item[4];
++    for (std::uint32_t index = 0; index < plan->pass_count; ++index) {
++        const std::uint8_t* source =
++            item + 8 + index * kMaterialPassItemSize;
++        MaterialPass& destination = plan->passes[index];
++        destination.texture_id = read_u16(source);
++        destination.texture_effect =
++            static_cast<MaterialTextureEffect>(source[2]);
++        destination.texture_alpha = source[3] != 0;
++        destination.blend = static_cast<MaterialBlendPolicy>(source[4]);
++        destination.depth_write = (source[5] & 1u) != 0;
++        destination.use_texture = (source[5] & 2u) != 0;
++        destination.color = read_u32(source + 8);
++    }
++    return PackageError::Ok;
++}
++
+ PackageError validate_dpcl(
+     const void* source, std::uint32_t size, PackageView* view) {
+     const PackageError base = validate_base(source, size, "DPCL", view);
+diff --git a/scripts/bootstrap-fsp102-exporter.sh b/scripts/bootstrap-fsp102-exporter.sh
+new file mode 100755
+index 0000000..96aa529
+--- /dev/null
++++ b/scripts/bootstrap-fsp102-exporter.sh
+@@ -0,0 +1,31 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
++. "$SCRIPT_DIR/lib/common.sh"
++require_project_root
++GCLIB_COMMIT="64127742467acb633d51685b9b1798ab45bb4034"
++ROOT="$(assert_project_path ".tools/sources/gclib")"
++CHECKOUT="$ROOT/$GCLIB_COMMIT"
++ARCHIVE="$(assert_project_path ".cache/downloads/gclib-6412774-source-temp.zip")"
++ARCHIVE_SHA256="73a6b473b8e940042be8a92b85c55f692bf4d433411406bfb972261c0020c56b"
++INNER="gclib-$GCLIB_COMMIT.tar.gz"
++INNER_SHA256="e2452c0e0f2cb37ec5b6bb37b1a1b494cf0ef5c1180f08955fc293f53e0dfa57"
++TRANSPORT="$ROOT/transport"
++safe_mkdir ".tools/sources/gclib"
++python3 - <<'PY' >/dev/null
++from PIL import Image
++PY
++if [ -f "$CHECKOUT/LICENSE.txt" ] && [ -f "$CHECKOUT/gclib/j3d.py" ]; then
++  printf 'FSP102_EXPORTER_BOOTSTRAP_OK gclib=%s cached=true\n' "$GCLIB_COMMIT"
++  exit 0
++fi
++[ ! -e "$CHECKOUT" ] || die "partial gclib checkout present: $CHECKOUT"
++[ -f "$ARCHIVE" ] || die "verified gclib artifact absent: place gclib-6412774-source-temp.zip in .cache/downloads/"
++[ "$(sha256_file "$ARCHIVE")" = "$ARCHIVE_SHA256" ] || die "gclib artifact SHA-256 mismatch"
++safe_mkdir ".tools/sources/gclib/transport"
++unzip -q -o "$ARCHIVE" -d "$TRANSPORT"
++[ "$(sha256_file "$TRANSPORT/$INNER")" = "$INNER_SHA256" ] || die "gclib inner archive SHA-256 mismatch"
++mkdir -p -- "$CHECKOUT"
++tar -xzf "$TRANSPORT/$INNER" -C "$CHECKOUT"
++[ -f "$CHECKOUT/LICENSE.txt" ] && [ -f "$CHECKOUT/gclib/j3d.py" ] || die "gclib extraction incomplete"
++printf 'FSP102_EXPORTER_BOOTSTRAP_OK gclib=%s cached=false\n' "$GCLIB_COMMIT"
+diff --git a/scripts/build-dusklight-psp-assets.sh b/scripts/build-dusklight-psp-assets.sh
+index 35150b8..6e3d332 100755
+--- a/scripts/build-dusklight-psp-assets.sh
++++ b/scripts/build-dusklight-psp-assets.sh
+@@ -22,6 +22,7 @@ DOOR="$(assert_project_path "build/assets/original-door")"
+ SPINNER_SWITCH="$(assert_project_path "build/assets/spinner-switch")"
+ TBOX="$(assert_project_path "build/assets/original-tbox")"
+ STARTUP="$(assert_project_path "build/assets/dusklight-startup")"
++FSP102="$(assert_project_path "build/assets/fsp102-environment")"
+ 
+ ensure_startup_assets() {
+   local manifest="$STARTUP/STARTUP.MANIFEST"
+@@ -31,7 +32,7 @@ ensure_startup_assets() {
+   fi
+   for package in \
+     startup.dpst startup_logos.dpsu title_ui.dpsu \
+-    file_select.dpsu \
++    file_select.dpsu title_camera.dpcm \
+     title_room.dprm title_room.dptx \
+     title_logo.dprm title_logo.dptx title_logo.dpan \
+     fsp108_room.dprm fsp108_room.dptx \
+@@ -48,6 +49,22 @@ ensure_startup_assets() {
+   done
+ }
+ 
++ensure_fsp102_environment_assets() {
++  if [ ! -s "$FSP102/fsp102_environment.dprm" ] ||
++     [ ! -s "$FSP102/fsp102_environment.dptx" ]; then
++    "$SCRIPT_DIR/build-fsp102-environment-assets.sh"
++  fi
++  local expected actual package
++  for package in fsp102_environment.dprm fsp102_environment.dptx; do
++    expected="$(awk -v file="$package" '$2 ~ ("/" file "$") {print $1}' \
++      "$FSP102/FSP102_ENVIRONMENT.SHA256")"
++    [ -n "$expected" ] || die "empreinte F_SP102 absente : $package"
++    actual="$(sha256_file "$FSP102/$package")"
++    [ "$actual" = "$expected" ] ||
++      die "empreinte F_SP102 invalide : $package"
++  done
++}
++
