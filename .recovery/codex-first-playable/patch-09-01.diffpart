@@ -1,0 +1,100 @@
++    struct.pack_into('<I',d,8,len(d));struct.pack_into('<I',d,12,crc(d));(out/'title_logo.dprm').write_bytes(d)
++    mats=b.mat3.materials; tt=128;mt=align(tt+len(textures)*48);st=align(mt+len(mats)*32);pix=align(st+len(mats)*40);total=sum(p[2]*p[3]*2 for p in textures); t=bytearray(pix+total);t[:4]=b'DPTX';struct.pack_into('<HH',t,4,2,128);struct.pack_into('<IIIIII',t,16,len(textures),len(mats),tt,48,mt,32);struct.pack_into('<I',t,48,total);t[64:68]=b'PEV1';struct.pack_into('<IIII',t,68,st,40,len(mats),1);po=pix
++    for tid,p in enumerate(textures):
++      w,h,sw,sh,fmt,data=p;struct.pack_into('<IHHHHB',t,tt+tid*48,tid,w,h,sw,sh,fmt);struct.pack_into('<II',t,tt+tid*48+16,po,len(data));t[po:po+len(data)]=data;po+=len(data)
++    for gid,m in enumerate(mats):
++      ids=[x for x in m.textures if x is not None]; primary=source_tex.get(ids[0],white) if ids else white; klass=mat_class(m); struct.pack_into('<HBB',t,mt+gid*32,primary,klass,0); col=m.material_colors[0]; rgba=(col.r,col.g,col.b,col.a) if col else (255,255,255,255);struct.pack_into('<I',t,mt+gid*32+4,c32(rgba));ac=m.alpha_compare;z=m.z_mode;bl=m.blend_mode;off=st+gid*40;struct.pack_into('<H',t,off,gid);t[off+2]=klass;t[off+3]=0 if klass==0 else 1;t[off+4]=int(z.depth_test);t[off+5]=z.depth_func.value;t[off+6]=int(z.depth_write);t[off+7]=m.cull_mode.value;t[off+8]=ac.comp0.value;t[off+9]=ac.ref0;t[off+10]=ac.operation.value;t[off+11]=ac.comp1.value;t[off+12]=ac.ref1;t[off+13]=bl.mode.value;t[off+14]=bl.source_factor.value;t[off+15]=bl.destination_factor.value;t[off+16]=bl.logic_op.value;t[off+17]=1;t[off+18]=0;t[off+19]=1;struct.pack_into('<H',t,off+20,primary)
++      for j in range(1,8):struct.pack_into('<H',t,off+20+j*2,0xffff)
++    struct.pack_into('<I',t,8,len(t));struct.pack_into('<I',t,12,crc(t));(out/'title_logo.dptx').write_bytes(t)
++
++def hermite(t,p0,v0,m0,p1,v1,m1):
++    if p1==p0:return v1
++    u=(t-p0)/(p1-p0);u2=u*u;u3=u2*u;dt=p1-p0
++    return (2*u3-3*u2+1)*v0+(u3-2*u2+u)*dt*m0+(-2*u3+3*u2)*v1+(u3-u2)*dt*m1
++def track(table,desc,t):
++    count,index,tangent=desc
++    if count==1:return float(table[index])
++    stride=3 if tangent==0 else 4; keys=[]
++    for i in range(count):
++      q=index+i*stride
++      if tangent==0: keys.append((float(table[q]),float(table[q+1]),float(table[q+2]),float(table[q+2])))
++      else: keys.append((float(table[q]),float(table[q+1]),float(table[q+2]),float(table[q+3])))
++    if t<=keys[0][0]:return keys[0][1]
++    if t>=keys[-1][0]:return keys[-1][1]
++    for a,b in zip(keys,keys[1:]):
++      if t<=b[0]:return hermite(t,a[0],a[1],a[3],b[0],b[1],b[2])
++    return keys[-1][1]
++def export_dpan(bck_path,out):
++    b=bck_path.read_bytes(); base=0x20
++    if b[base:base+4]!=b'ANK1': raise ValueError('title BCK has no ANK1 chunk')
++    duration=struct.unpack_from('>H',b,base+10)[0]; joints=struct.unpack_from('>H',b,base+12)[0]; sc,rc,tc=struct.unpack_from('>HHH',b,base+14); ao,so,ro,to=struct.unpack_from('>IIII',b,base+20); scale=struct.unpack_from('>'+('f'*sc),b,base+so); rot=struct.unpack_from('>'+('h'*rc),b,base+ro); trans=struct.unpack_from('>'+('f'*tc),b,base+to)
++    desc=[[struct.unpack_from('>HHH',b,base+ao+j*54+i*6) for i in range(9)] for j in range(joints)]
++    if joints!=7: raise ValueError(('title joint contract',joints))
++    for ds in desc:
++      for axis in range(3):
++        d=ds[axis*3+1]
++        if d[0]!=1 or rot[d[1]]!=0: raise ValueError('title logo rotation track is not identity')
++    samples=duration+1; frame_max=samples; data=bytearray()
++    for f in range(samples):
++      for j in range(joints):
++        ds=desc[j]; s=[track(scale,ds[a*3],f) for a in range(3)]; tr=[track(trans,ds[a*3+2],f) for a in range(3)]
++        data+=struct.pack('<10f',*(tr+[0.,0.,0.,1.]+s))
++    total=128+48+len(data); p=bytearray(total);p[:4]=b'DPAN';struct.pack_into('<HHI',p,4,1,128,total);struct.pack_into('<III',p,16,1,joints,30);struct.pack_into('<II',p,32,128,48);entry=128;struct.pack_into('<I',p,entry,7);struct.pack_into('<IIII',p,entry+8,duration,samples,joints,0);struct.pack_into('<II',p,entry+24,176,len(data));p[176:]=data;struct.pack_into('<I',p,12,crc(p));(out/'title_logo.dpan').write_bytes(p)
++
++def main():
++    if len(sys.argv)!=4: raise SystemExit('usage: title_logo_export.py <titlelogo_tm.bmd> <titlelogo.bck> <outdir>')
++    bmd_path=Path(sys.argv[1]); bck_path=Path(sys.argv[2]); out=Path(sys.argv[3]); out.mkdir(parents=True,exist_ok=True)
++    export_model(bmd_path,out); export_dpan(bck_path,out)
++    for name in ('title_logo.dprm','title_logo.dptx','title_logo.dpan'):
++      p=out/name; print(f'{name} bytes={p.stat().st_size} sha256={hashlib.sha256(p.read_bytes()).hexdigest()}')
++if __name__=='__main__': main()
+diff --git a/tools/title_prompt_ui_export.py b/tools/title_prompt_ui_export.py
+new file mode 100644
+index 0000000..a4abc22
+--- /dev/null
++++ b/tools/title_prompt_ui_export.py
+@@ -0,0 +1,51 @@
++#!/usr/bin/env python3
++from pathlib import Path
++import dataclasses, hashlib, os, struct, sys, types, typing, zlib
++from PIL import Image
++if not hasattr(dataclasses,'_recursive_repr') and hasattr(dataclasses,'recursive_repr'): dataclasses._recursive_repr=dataclasses.recursive_repr
++G=Path(os.environ.get('GCLIB_ROOT',''))
++if not G.is_dir(): raise SystemExit('GCLIB_ROOT must point to the pinned gclib checkout')
++sys.path.insert(0,str(G))
++import gclib.bunfoe as _b
++from gclib import fs_helpers as _fs
++from gclib.fs_helpers import FixedStr,MagicStr
++_o1=_b.BUNFOE.get_byte_size;_o2=_b.BUNFOE.read_value
++def _g(t):
++    if isinstance(t,types.GenericAlias) and t.__origin__ in (FixedStr,MagicStr):return typing.get_args(t)[0]
++    return _o1(t)
++def _r(self,t,o):
++    if isinstance(t,types.GenericAlias) and t.__origin__ in (FixedStr,MagicStr):return _fs.read_str(self.data,o,typing.get_args(t)[0])
++    return _o2(self,t,o)
++_b.BUNFOE.get_byte_size=staticmethod(_g);_b.BUNFOE.read_value=_r
++try:import imagequant
++except ImportError:
++    m=types.ModuleType('imagequant');m.quantize_pil_image=lambda *a,**k:None;sys.modules['imagequant']=m
++from gclib.bfn import BFN
++
++def swizzle(raw,w,h):
++    out=bytearray();row=w*2
++    for by in range(0,h,8):
++      for bx in range(0,row,16):
++       for y in range(8):out+=raw[(by+y)*row+bx:(by+y)*row+bx+16]
++    return out
++def crc(blob):
++    b=bytearray(blob);b[12:16]=b'\0'*4;return zlib.crc32(b)&0xffffffff
++
++def main():
++    if len(sys.argv)!=4: raise SystemExit('usage: title_prompt_ui_export.py <rodan_b_24_22.bfn> <message> <output.dpsu>')
++    font=BFN(sys.argv[1]);base=font.render_string(sys.argv[2],600).convert('RGBA');box=base.getbbox()
++    if box is None:raise ValueError('empty title prompt')
++    base=base.crop(box);scale=272/448;base=base.resize((max(1,round(base.width*scale)),max(1,round(base.height*scale))),Image.Resampling.LANCZOS)
++    sprite=Image.new('RGBA',(base.width+6,base.height+6),(0,0,0,0));alpha=base.getchannel('A');shadow=Image.new('RGBA',base.size,(0,0,0,210));shadow.putalpha(alpha)
++    for dx,dy in ((1,1),(2,1),(1,2)):sprite.alpha_composite(shadow,(dx+1,dy+1))
++    white=Image.new('RGBA',base.size,(255,255,255,255));white.putalpha(alpha);sprite.alpha_composite(white,(1,1))
++    atlas=Image.new('RGBA',(512,512),(0,0,0,0));atlas.alpha_composite(sprite,(0,0));raw=bytearray(512*512*2)
++    for y in range(512):
++      for x in range(512):
