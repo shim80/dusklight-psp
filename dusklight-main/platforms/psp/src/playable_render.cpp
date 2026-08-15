@@ -414,12 +414,10 @@ std::uint32_t environment_clear_color(
 
 void configure_environment(
     const RealRoomRenderInput& input, RenderMetrics* metrics) {
-    if (input.environment == nullptr ||
-        input.lighting_mode == LightingMode::Off) {
+    if (input.environment == nullptr) {
         sceGuDisable(GU_FOG);
         sceGuDisable(GU_LIGHTING);
-        metrics->environment_records_loaded =
-            input.environment == nullptr ? 0 : 1;
+        metrics->environment_records_loaded = 0;
         metrics->environment_fog_enabled = false;
         metrics->environment_lighting_enabled = false;
         return;
@@ -433,7 +431,8 @@ void configure_environment(
     metrics->environment_fog_far = state.fog_far;
     metrics->environment_fog_enabled =
         state.fog_enabled && input.fog_mode == FogMode::Source;
-    metrics->environment_lighting_enabled = true;
+    metrics->environment_lighting_enabled =
+        input.lighting_mode != LightingMode::Off;
     if (metrics->environment_fog_enabled) {
         sceGuEnable(GU_FOG);
         sceGuFog(

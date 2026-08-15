@@ -240,7 +240,7 @@ playable::RealRoomRenderInput make_render_input(
     output.shadows = nullptr;
     output.render_profile = playable::RenderProfile::KnownGoodUnlit;
     output.lighting_mode = playable::LightingMode::Off;
-    output.fog_mode = playable::FogMode::Off;
+    output.fog_mode = playable::FogMode::Source;
     output.shadow_mode = playable::ShadowMode::Off;
     return output;
 }
@@ -562,7 +562,7 @@ int run_canonical_game() {
                     log(
                         "DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK "
                         "stage=F_SP108 room=1 start=21 actors=9 "
-                        "render=game_alpha_source_clear frame=1");
+                        "render=game_alpha_source_fog frame=1");
                     first_render_proven = true;
                     arm_first_playable_control_proof(
                         &control_proof, runtime.state);
