@@ -1,0 +1,133 @@
+name: Alpha-aware XLU fidelity iteration
+
+on:
+  push:
+    branches:
+      - agent/psp-pc-fidelity-startup
+    paths:
+      - .github/workflows/fidelity-xlu-alpha-aware.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refine XLU fallback by actual alpha availability
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('dusklight-main/platforms/psp/src/playable_render.cpp')
+          s = p.read_text()
+          old = '''        room::AlphaMaterialState source_alpha = {};
+const bool has_source_alpha = room::read_room_alpha_material_state(
+    texture_package, source_material, &source_alpha) ==
+    room::PackageError::Ok;
+// Source XLU materials frequently depend on TEV/texture stages that a
+// single PSP fallback pass cannot reproduce. Do not turn those into
+// opaque white sheets: keep them hidden until MPV1 provides a bounded
+// pass plan. Source-alpha overlays in the OPAQUE draw buffer (for
+// example terrain/foliage edge layers) still render normally.
+if (!has_plan && wanted == 2 && has_source_alpha &&
+    source_alpha.draw_buffer == 1) {
+    continue;
+}
+'''
+          new = '''        room::AlphaMaterialState source_alpha = {};
+        const bool has_source_alpha = room::read_room_alpha_material_state(
+            texture_package, source_material, &source_alpha) ==
+            room::PackageError::Ok;
+        const std::uint32_t room_texture_count =
+            read_u32(g_room_texture_package.bytes + 16);
+        const bool fallback_texture_has_alpha =
+            fallback_texture < room_texture_count &&
+            g_room_textures[fallback_texture].format != 0;
+        const bool fallback_needs_missing_tev_alpha =
+            has_source_alpha && source_alpha.draw_buffer == 1 &&
+            source_alpha.material_class == room::AlphaMaterialClass::AlphaBlend &&
+            source_alpha.blend_mode == 1 && source_alpha.blend_src == 4 &&
+            source_alpha.texture_count == 1 &&
+            source_alpha.texture_identities_complete &&
+            !fallback_texture_has_alpha;
+        // A single-pass PSP fallback cannot reconstruct TEV-generated alpha.
+        // Skip only the unsafe XLU case where SRC_ALPHA is requested but the
+        // sole source texture is RGB565/opaque. Keep XLU materials that carry
+        // usable texture alpha (including the F_SP108 water/foam layers).
+        if (!has_plan && wanted == 2 && fallback_needs_missing_tev_alpha) {
+            continue;
+        }
+'''
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one old XLU fallback block, got {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+          git diff -- dusklight-main/platforms/psp/src/playable_render.cpp
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl xz-utils
+
+      - name: Bootstrap pinned PSP toolchain
+        run: ./scripts/bootstrap-repro.sh
+
+      - name: Build product EBOOT
+        run: |
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake -S test/dusklight-psp -B .work/build/xlu-alpha-aware -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/xlu-alpha-aware -j 4
+          "$PSPDEV/bin/psp-objdump" -f .work/build/xlu-alpha-aware/dusklight_psp.elf | tee .work/xlu-alpha-aware-objdump.log
+          grep -F 'architecture: mips:allegrex' .work/xlu-alpha-aware-objdump.log
+          sha256sum .work/build/xlu-alpha-aware/EBOOT.PBP | tee .work/xlu-alpha-aware-eboot.sha256
+
+      - name: Build fast capture harness from same product code
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('dusklight-main/platforms/psp/src/canonical_startup_entry.cpp')
+          s = p.read_text()
+          needle = 'int run_canonical_startup_then_game() {\n'
+          if s.count(needle) != 1:
+              raise SystemExit('startup entry contract changed')
+          p.write_text(s.replace(
+              needle,
+              needle + '    // CI framebuffer harness only; restored before commit.\n    return run_canonical_game();\n',
+              1))
+          PY
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake -S test/dusklight-psp -B .work/build/xlu-alpha-aware-harness -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/xlu-alpha-aware-harness -j 4
+          git checkout -- dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
+          git diff --check
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: psp-fidelity-xlu-alpha-aware
+          path: |
+            .work/build/xlu-alpha-aware/EBOOT.PBP
+            .work/build/xlu-alpha-aware-harness/EBOOT.PBP
+            .work/xlu-alpha-aware-eboot.sha256
+            .work/xlu-alpha-aware-objdump.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish product change and remove iteration workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dusklight-main/platforms/psp/src/playable_render.cpp
+          git rm .github/workflows/fidelity-xlu-alpha-aware.yml
+          git diff --cached --check
+          git commit -m 'Preserve alpha-capable F_SP108 XLU layers'
+          git push origin HEAD:agent/psp-pc-fidelity-startup
