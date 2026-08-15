@@ -138,9 +138,9 @@ void draw_file_select(
     pspDebugScreenSetTextColor(0x00FFFFFF);
     pspDebugScreenClear();
     pspDebugScreenSetXY(5, 2);
-    pspDebugScreenPrintf("D U S K L I G H T   P S P");
+    pspDebugScreenPrintf("D U S K L I G H T");
     pspDebugScreenSetXY(5, 4);
-    pspDebugScreenPrintf("PUBLIC STARTUP ROUTE -> CANONICAL GAMEPLAY");
+    pspDebugScreenPrintf("SELECT SAVE FILE");
     for (std::size_t index = 0; index < save::kSlotCount; ++index) {
         const save::Slot& slot = flow.bank().slot(index);
         pspDebugScreenSetXY(6, static_cast<int>(8 + index * 3));
@@ -157,11 +157,9 @@ void draw_file_select(
         }
     }
     pspDebugScreenSetXY(5, 19);
-    pspDebugScreenPrintf("UP/DOWN FILE    X/START CONFIRM");
+    pspDebugScreenPrintf("UP/DOWN SELECT    X/START CONFIRM");
     pspDebugScreenSetXY(5, 21);
     pspDebugScreenPrintf("%-55s", status != nullptr ? status : "READY");
-    pspDebugScreenSetXY(5, 27);
-    pspDebugScreenPrintf("Startup presentation is synthetic/public in this build");
 }
 
 void draw_room_error(
