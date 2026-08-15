@@ -1,0 +1,100 @@
+ #include <cstdint>
+ #include <cstdio>
+ #include <fstream>
+@@ -33,6 +34,41 @@ bool textures_valid(const char* path) {
+                &view) == dusk::psp::room::PackageError::Ok;
+ }
+ 
++bool title_model_contract(const char* path) {
++    const std::vector<std::uint8_t> bytes = load(path);
++    if (bytes.size() < 384 ||
++        dusk::psp::room::read_u32(bytes.data() + 20) != 24 ||
++        dusk::psp::room::read_u32(bytes.data() + 32) != 6) {
++        return false;
++    }
++    constexpr float kExpectedBounds[6] = {
++        -228.0f, -168.0f, 0.0f, 228.0f, 168.0f, 0.0f};
++    for (std::uint32_t index = 0; index < 6; ++index) {
++        if (std::fabs(
++                dusk::psp::room::read_f32(
++                    bytes.data() + 48 + index * 4) -
++                kExpectedBounds[index]) > 0.001f) {
++            return false;
++        }
++    }
++    const std::uint32_t section_table =
++        dusk::psp::room::read_u32(bytes.data() + 72);
++    const std::uint32_t submeshes = dusk::psp::room::read_u32(
++        bytes.data() + section_table + 64 + 4);
++    if (submeshes > bytes.size() ||
++        bytes.size() - submeshes < 6 * 48) {
++        return false;
++    }
++    for (std::uint32_t index = 0; index < 6; ++index) {
++        const std::uint8_t* item = bytes.data() + submeshes + index * 48;
++        if (item[12] != 2 ||
++            dusk::psp::room::read_u16(item + 14) != index) {
++            return false;
++        }
++    }
++    return true;
++}
++
+ }  // namespace
+ 
+ int main(int argc, char** argv) {
+@@ -44,8 +80,9 @@ int main(int argc, char** argv) {
+     const bool room_textures = textures_valid(argv[2]);
+     const bool title_model = model_valid(argv[3]);
+     const bool title_textures = textures_valid(argv[4]);
++    const bool title_local_geometry = title_model_contract(argv[3]);
+     if (!room_model || !room_textures ||
+-        !title_model || !title_textures) {
++        !title_model || !title_textures || !title_local_geometry) {
+         std::fprintf(
+             stderr,
+             "startup title asset validation failed "
+@@ -55,10 +92,13 @@ int main(int argc, char** argv) {
+             room_textures ? "true" : "false",
+             title_model ? "true" : "false",
+             title_textures ? "true" : "false");
++        std::fprintf(
++            stderr, "title_local_geometry=%s\n",
++            title_local_geometry ? "true" : "false");
+         return 1;
+     }
+     std::puts(
+         "STARTUP_TITLE_ASSET_HOST_OK room=DPRM,DPTX "
+-        "title=DPRM,DPTX");
++        "title=DPRM,DPTX local_vertices=24 blend_submeshes=6");
+     return 0;
+ }
+diff --git a/test/startup-camera-host/main.cpp b/test/startup-camera-host/main.cpp
+index 8359a15..b49ee5d 100644
+--- a/test/startup-camera-host/main.cpp
++++ b/test/startup-camera-host/main.cpp
+@@ -1,9 +1,13 @@
+ #include "dusk/psp/startup_camera_track.hpp"
+ 
+ #include <array>
++#include <cmath>
+ #include <cstdint>
+ #include <cstdio>
+ #include <cstring>
++#include <fstream>
++#include <iterator>
++#include <vector>
+ 
+ namespace {
+ 
+@@ -27,7 +31,7 @@ void write_f32(std::uint8_t* bytes, float value) {
+ 
+ }  // namespace
+ 
+-int main() {
++int main(int argc, char** argv) {
+     using namespace dusk::psp::camera;
+     constexpr std::uint32_t kSourceFrames = 2;
+     constexpr std::uint32_t kSamples = kSourceFrames + 1;
+@@ -91,5 +95,46 @@ int main() {
+         "STARTUP_CAMERA_TRACK_HOST_OK source_fps=%u source_frames=%u "
