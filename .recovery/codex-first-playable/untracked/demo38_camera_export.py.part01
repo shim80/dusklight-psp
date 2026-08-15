@@ -1,0 +1,120 @@
+        values[3] = keys[upper + 1][1]
+        knots[4] = keys[upper + 1][0]
+        knots[1] = 2.0 * prev_time - next_time
+        knots[0] = 2.0 * prev_time - knots[4]
+        if len(keys) - upper == 2:
+            knots[5] = 2.0 * knots[4] - next_time
+        else:
+            knots[5] = keys[upper + 2][0]
+    elif upper == 2:
+        values[0] = keys[upper - 2][1]
+        knots[1] = keys[upper - 2][0]
+        knots[0] = 2.0 * knots[1] - prev_time
+        if len(keys) - upper == 1:
+            values[3] = 2.0 * next_value - prev_value
+            knots[4] = 2.0 * next_time - prev_time
+            knots[5] = 2.0 * next_time - knots[1]
+        elif len(keys) - upper == 2:
+            values[3] = keys[upper + 1][1]
+            knots[4] = keys[upper + 1][0]
+            knots[5] = 2.0 * knots[4] - next_time
+        else:
+            values[3] = keys[upper + 1][1]
+            knots[4] = keys[upper + 1][0]
+            knots[5] = keys[upper + 2][0]
+    else:
+        values[0] = keys[upper - 2][1]
+        knots[1] = keys[upper - 2][0]
+        knots[0] = keys[upper - 3][0]
+        if len(keys) - upper == 1:
+            values[3] = 2.0 * next_value - prev_value
+            knots[4] = 2.0 * next_time - prev_time
+            knots[5] = 2.0 * next_time - knots[1]
+        elif len(keys) - upper == 2:
+            values[3] = keys[upper + 1][1]
+            knots[4] = keys[upper + 1][0]
+            knots[5] = 2.0 * knots[4] - next_time
+        else:
+            values[3] = keys[upper + 1][1]
+            knots[4] = keys[upper + 1][0]
+            knots[5] = keys[upper + 2][0]
+
+    k0, k1, k2, k3, k4, k5 = knots
+    d0, d1, d2 = parameter - k0, parameter - k1, parameter - k2
+    d3, d4, d5 = k3 - parameter, k4 - parameter, k5 - parameter
+    inv32 = 1.0 / (k3 - k2)
+    blend3 = (d3 * inv32) / (k3 - k1)
+    blend2 = (d2 * inv32) / (k4 - k2)
+    blend1 = (d3 * blend3) / (k3 - k0)
+    blend4 = ((d1 * blend3) + (d4 * blend2)) / (k4 - k1)
+    blend5 = (d2 * blend2) / (k5 - k2)
+    terms = (
+        d3 * blend1,
+        (d0 * blend1) + (d4 * blend4),
+        (d1 * blend4) + (d5 * blend5),
+        d2 * blend5,
+    )
+    return sum(term * value for term, value in zip(terms, values))
+
+
+def parse_fvb(data: bytes, offset: int) -> tuple[list[ListParameter], int]:
+    require(data[offset : offset + 4] == b"FVB\0", "JFVB payload magic")
+    require(u16be(data, offset + 4) == 0xFEFF, "FVB byte order")
+    require(u16be(data, offset + 6) == 0x0100, "FVB version")
+    count = u32be(data, offset + 12)
+    cursor = offset + 16
+    functions: list[ListParameter] = []
+    for index in range(count):
+        block_start = cursor
+        size = u32be(data, cursor)
+        block_type = u16be(data, cursor + 4)
+        id_size = u16be(data, cursor + 6)
+        require(size >= 8 and cursor + size <= len(data), "truncated FVB block")
+        require(block_type == 5 and id_size == 0, f"FVB[{index}] contract")
+        cursor += 8
+        end = block_start + size
+        range_begin = range_end = None
+        interpolation = 0
+        outside_begin = outside_end = 0
+        keys = None
+        while cursor < end:
+            paragraph_size, paragraph_type, header_size = parse_variable_pair(data, cursor)
+            content = cursor + header_size
+            require(content + paragraph_size <= end, "truncated FVB paragraph")
+            if paragraph_type == 0:
+                require(paragraph_size == 0, "bad FVB terminator")
+            elif paragraph_type == 1:
+                key_count = u32be(data, content)
+                require(paragraph_size == 4 + key_count * 8, "bad FVB key data")
+                keys = tuple(
+                    (f32be(data, content + 4 + key * 8),
+                     f32be(data, content + 8 + key * 8))
+                    for key in range(key_count)
+                )
+            elif paragraph_type == 0x12:
+                require(paragraph_size == 8, "bad FVB range")
+                range_begin = f32be(data, content)
+                range_end = f32be(data, content + 4)
+            elif paragraph_type == 0x15:
+                require(paragraph_size == 4, "bad FVB outside modes")
+                outside_begin = u16be(data, content)
+                outside_end = u16be(data, content + 2)
+            elif paragraph_type == 0x16:
+                require(paragraph_size == 4, "bad FVB interpolation")
+                interpolation = u32be(data, content)
+            else:
+                raise ExportError(f"unsupported FVB paragraph {paragraph_type:#x}")
+            cursor = content + align4(paragraph_size)
+        require(cursor == end and keys is not None, "incomplete FVB function")
+        require(range_begin is not None and range_end is not None, "missing FVB range")
+        require(all(keys[i][0] < keys[i + 1][0] for i in range(len(keys) - 1)),
+                "unordered FVB keys")
+        functions.append(ListParameter(
+            keys, range_begin, range_end, interpolation,
+            outside_begin, outside_end))
+        cursor = end
+    return functions, cursor
+
+
+@dataclass(frozen=True)
+class CameraCut:
