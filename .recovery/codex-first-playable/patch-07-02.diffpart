@@ -1,0 +1,20 @@
++      if key not in texkey_to_id:
++       texkey_to_id[key]=len(textures);textures.append(packed)
++      return texkey_to_id[key]
++    for label,b,_,m in materials:
++      for slot in used_texture_slots(m):
++       source_id=m.textures[slot];key=(label,source_id)
++       if key not in source_tex_map:source_tex_map[key]=add_img(b.tex1.textures[source_id].render())
++
++    material_plans=[]
++    for gid,(label,b,mi,m) in enumerate(materials):
++      slots=used_texture_slots(m)
++      source_ids=[m.textures[slot] for slot in slots]
++      constant_rgb=not color_tev_uses_texture(m)
++      constant=tev_constant_rgba(m)
++      if constant_rgb:
++       if source_ids:
++        source=b.tex1.textures[source_ids[0]].render().convert('RGBA')
++        derived=Image.new('RGBA',source.size,constant)
++        derived.putalpha(source.getchannel('A'))
++       else:
