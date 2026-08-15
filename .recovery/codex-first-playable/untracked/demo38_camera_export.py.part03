@@ -1,0 +1,31 @@
+        SOURCE_FPS, EXPECTED_SOURCE_FRAMES, EXPECTED_SAMPLE_COUNT,
+        DPCM_SAMPLE_BYTES, DPCM_HEADER_BYTES,
+    )
+    struct.pack_into("<I", header, 36, 1)
+    output = header + samples
+    struct.pack_into("<I", output, 12, zlib.crc32(output) & 0xFFFFFFFF)
+    return bytes(output)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("source_stb", type=Path)
+    parser.add_argument("output_dpcm", type=Path)
+    args = parser.parse_args()
+    source = args.source_stb.read_bytes()
+    functions, cuts = parse_source(source)
+    output = build_dpcm(functions, cuts)
+    args.output_dpcm.parent.mkdir(parents=True, exist_ok=True)
+    args.output_dpcm.write_bytes(output)
+    digest = hashlib.sha256(output).hexdigest()
+    print(
+        "DEMO38_CAMERA_EXPORT_OK "
+        f"source_sha256={EXPECTED_STB_SHA256} cuts={len(cuts)} "
+        f"source_fps={SOURCE_FPS} source_frames={EXPECTED_SOURCE_FRAMES} "
+        f"samples={EXPECTED_SAMPLE_COUNT} bytes={len(output)} sha256={digest}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
