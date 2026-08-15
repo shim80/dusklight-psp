@@ -24,13 +24,8 @@ jobs:
           from pathlib import Path
           p = Path('dusklight-main/platforms/psp/src/playable_render.cpp')
           s = p.read_text()
-          old = '''        const bool has_plan = room::read_room_material_pass_plan(
-              texture_package, source_material, &plan) == room::PackageError::Ok;
-          const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
-          '''
-          new = '''        const bool has_plan = room::read_room_material_pass_plan(
-              texture_package, source_material, &plan) == room::PackageError::Ok;
-          room::AlphaMaterialState source_alpha = {};
+          needle = '        const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;\n'
+          insert = '''        room::AlphaMaterialState source_alpha = {};
           const bool has_source_alpha = room::read_room_alpha_material_state(
               texture_package, source_material, &source_alpha) ==
               room::PackageError::Ok;
@@ -43,11 +38,10 @@ jobs:
               source_alpha.draw_buffer == 1) {
               continue;
           }
-          const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
           '''
-          if s.count(old) != 1:
-              raise SystemExit(f'expected one material-plan seam, got {s.count(old)}')
-          p.write_text(s.replace(old, new))
+          if s.count(needle) != 1:
+              raise SystemExit(f'expected one pass-count seam, got {s.count(needle)}')
+          p.write_text(s.replace(needle, insert + needle, 1))
           PY
           git diff --check
           git diff -- dusklight-main/platforms/psp/src/playable_render.cpp
