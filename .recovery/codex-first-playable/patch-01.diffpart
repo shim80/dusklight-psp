@@ -1,0 +1,220 @@
+ Immediate order:
+ 
+-1. fix F_SP102 multi-texture/TEV material composition using explicit source-derived PSP pass plans;
+-2. recover the correct title-logo source/export transform scale;
+-3. replay the complete startup/title/save/F_SP108 route in one EBOOT;
++1. port the bounded source title BPK/BRK/BTK material animation needed to close the remaining title-composition gap;
++2. refine only the explicitly approximate/unsupported F_SP102 plans that remain visibly wrong;
++3. replay the complete startup/title/save/F_SP108 route after each causal visual correction;
+ 4. preserve existing source gameplay, save and control semantics;
+ 5. introduce texture residency/performance optimizations only behind measurements and equivalence gates.
+ 
+ ## Explicitly not closed
+ 
+-- complete asset-backed canonical intro/title/save/F_SP108 one-EBOOT run with source-faithful startup presentation;
++- source-faithful startup presentation beyond the now-proven one-EBOOT route, especially title BPK/BRK/BTK and the declared approximate/unsupported F_SP102 plans;
+ - full first-playable control acceptance for camera/action/pause/resume in actual F_SP108;
+ - full inventory/pause UI fidelity;
+ - all chest sizes/items and full item message integration;
+diff --git a/dusklight-main/platforms/psp/include/dusk/psp/playable_render.hpp b/dusklight-main/platforms/psp/include/dusk/psp/playable_render.hpp
+index 4eadeac..aacba30 100644
+--- a/dusklight-main/platforms/psp/include/dusk/psp/playable_render.hpp
++++ b/dusklight-main/platforms/psp/include/dusk/psp/playable_render.hpp
+@@ -98,6 +98,11 @@ struct RenderMetrics {
+     std::uint32_t room_alpha_exact_draws;
+     std::uint32_t room_blend_exact_draws;
+     std::uint32_t room_cull_exact_draws;
++    std::uint32_t room_material_plan_records;
++    std::uint32_t room_material_plan_exact_draws;
++    std::uint32_t room_material_plan_approximate_draws;
++    std::uint32_t room_material_plan_unsupported_draws;
++    std::uint32_t room_material_pass_draws;
+     std::uint32_t room_pixel_regions_changed;
+     std::uint16_t room_pixel_values[16];
+     std::uint32_t original_actor_draw_calls;
+diff --git a/dusklight-main/platforms/psp/include/dusk/psp/room_package.hpp b/dusklight-main/platforms/psp/include/dusk/psp/room_package.hpp
+index 51bd3ce..3ef14f9 100644
+--- a/dusklight-main/platforms/psp/include/dusk/psp/room_package.hpp
++++ b/dusklight-main/platforms/psp/include/dusk/psp/room_package.hpp
+@@ -71,6 +71,53 @@ struct AlphaMaterialState {
+     std::uint16_t texture_ids[8];
+ };
+ 
++enum class MaterialPassFidelity : std::uint8_t {
++    Exact = 0,
++    Approximate = 1,
++    Unsupported = 2,
++};
++
++enum class MaterialFallbackReason : std::uint8_t {
++    None = 0,
++    ComplexTev = 1,
++    UnsupportedTexgen = 2,
++    TooManyTextures = 3,
++    UnsupportedTevOp = 4,
++};
++
++enum class MaterialTextureEffect : std::uint8_t {
++    Modulate = 0,
++    Replace = 1,
++};
++
++enum class MaterialBlendPolicy : std::uint8_t {
++    Source = 0,
++    Opaque = 1,
++    Alpha = 2,
++    Additive = 3,
++    Multiply = 4,
++};
++
++struct MaterialPass {
++    std::uint16_t texture_id;
++    MaterialTextureEffect texture_effect;
++    bool texture_alpha;
++    MaterialBlendPolicy blend;
++    bool depth_write;
++    bool use_texture;
++    std::uint32_t color;
++};
++
++constexpr std::uint8_t kMaximumMaterialPasses = 2;
++
++struct MaterialPassPlan {
++    std::uint16_t source_material_id;
++    MaterialPassFidelity fidelity;
++    MaterialFallbackReason reason;
++    std::uint8_t pass_count;
++    MaterialPass passes[kMaximumMaterialPasses];
++};
++
+ constexpr std::uint8_t alpha_material_bucket(AlphaMaterialClass value) {
+     return value == AlphaMaterialClass::Opaque
+         ? 0
+@@ -174,6 +221,10 @@ PackageError read_room_alpha_material_state(
+     const PackageView& view,
+     std::uint16_t material_id,
+     AlphaMaterialState* state);
++PackageError read_room_material_pass_plan(
++    const PackageView& view,
++    std::uint16_t material_id,
++    MaterialPassPlan* plan);
+ PackageError validate_dpcl(
+     const void* bytes, std::uint32_t size, PackageView* view);
+ PackageError validate_dpsc(
+diff --git a/dusklight-main/platforms/psp/src/canonical_assets.cpp b/dusklight-main/platforms/psp/src/canonical_assets.cpp
+index 80fff4e..f7faf33 100644
+--- a/dusklight-main/platforms/psp/src/canonical_assets.cpp
++++ b/dusklight-main/platforms/psp/src/canonical_assets.cpp
+@@ -16,8 +16,8 @@ constexpr CanonicalStartupAssets kStartupAssets = {
+     "data/startup/startup_logos.dpsu",
+     "data/startup/title_ui.dpsu",
+     "data/startup/file_select.dpsu",
+-    "data/startup/title_room.dprm",
+-    "data/startup/title_room.dptx",
++    "data/startup/fsp102_environment.dprm",
++    "data/startup/fsp102_environment.dptx",
+     "data/startup/title_logo.dprm",
+     "data/startup/title_logo.dptx",
+     "data/startup/title_logo.dpan",
+diff --git a/dusklight-main/platforms/psp/src/canonical_game.cpp b/dusklight-main/platforms/psp/src/canonical_game.cpp
+index a4d3228..f277d14 100644
+--- a/dusklight-main/platforms/psp/src/canonical_game.cpp
++++ b/dusklight-main/platforms/psp/src/canonical_game.cpp
+@@ -39,7 +39,37 @@ constexpr std::uint32_t kExpectedSourceActors = 599;
+ constexpr std::uint32_t kExpectedEssentialActors = 9;
+ constexpr std::uint32_t kFrameDelayMicroseconds = 33333;
+ constexpr std::uint32_t kCommandListBytes = 256 * 1024;
++constexpr std::uint32_t kAutomationCaptureBytes = 512 * 272 * 2;
+ alignas(16) std::uint8_t g_command_list[kCommandListBytes] = {};
++alignas(16) std::uint8_t g_automation_capture[kAutomationCaptureBytes] = {};
++
++bool automation_requested() {
++    constexpr char kRequest[] = "DUSKLIGHT_STARTUP_AUTOMATION_V1\n";
++    char path[256] = {};
++    char payload[sizeof(kRequest)] = {};
++    std::uint32_t size = 0;
++    return make_game_path("STARTUP.AUTOMATION.REQUEST", path, sizeof(path)) &&
++        read_file(path, payload, sizeof(payload), &size) &&
++        size == sizeof(kRequest) - 1 &&
++        std::memcmp(payload, kRequest, sizeof(kRequest) - 1) == 0;
++}
++
++bool write_automation_playable_proof() {
++    char frame_path[256] = {};
++    char marker_path[256] = {};
++    constexpr char kMarker[] =
++        "DUSKLIGHT_PSP_STARTUP_SAVE_GAMEPLAY_OK\n"
++        "route=intro,start,file_select,new_game,F_SP108\n"
++        "framebuffer=PLAYABLE.5650\n";
++    return make_game_path("PLAYABLE.5650", frame_path, sizeof(frame_path)) &&
++        make_game_path("PLAYABLE.OK", marker_path, sizeof(marker_path)) &&
++        playable::capture_playable_frame_5650(
++            g_automation_capture, sizeof(g_automation_capture)) &&
++        write_file(
++            frame_path, g_automation_capture,
++            static_cast<std::uint32_t>(sizeof(g_automation_capture))) &&
++        write_file(marker_path, kMarker, sizeof(kMarker) - 1);
++}
+ 
+ void write_u16(std::uint8_t* output, std::uint16_t value) {
+     output[0] = static_cast<std::uint8_t>(value);
+@@ -423,6 +453,8 @@ int run_canonical_game() {
+     bool terminal_room_error = false;
+     bool first_render_proven = false;
+     bool controls_proven = false;
++    const bool should_automate_route = automation_requested();
++    bool automation_complete = false;
+     save::StartContext handoff = {};
+ 
+     draw_file_select(
+@@ -447,12 +479,12 @@ int run_canonical_game() {
+ 
+         if (!gameplay_active && !terminal_room_error &&
+             flow.phase() == startup::SaveFlowPhase::FileSelect &&
+-            (input.up_pressed || input.down_pressed ||
++            (should_automate_route || input.up_pressed || input.down_pressed ||
+              input.action_pressed || input.pause_pressed)) {
+             startup::SaveFlowInput flow_input = {};
+             flow_input.up = input.up_pressed;
+             flow_input.down = input.down_pressed;
+-            flow_input.confirm = input.action_pressed;
++            flow_input.confirm = input.action_pressed || should_automate_route;
+             flow_input.start = input.pause_pressed;
+             if (!flow.tick(flow_input)) {
+                 draw_file_select(flow, "SAVE FLOW ERROR");
+@@ -543,6 +575,21 @@ int run_canonical_game() {
+                     first_render_proven = true;
+                     arm_first_playable_control_proof(
+                         &control_proof, runtime.state);
++                    if (should_automate_route) {
++                        if (!write_automation_playable_proof()) {
++                            if (renderer_active) {
++                                playable::shutdown_renderer();
++                                renderer_active = false;
++                            }
++                            draw_room_error(
++                                handoff, "automation capture",
++                                "frame or marker write failed");
++                            gameplay_active = false;
++                            terminal_room_error = true;
++                        } else {
++                            automation_complete = true;
++                        }
++                    }
+                 } else if (!controls_proven &&
+                            first_playable_controls_complete(control_proof)) {
+                     log(
+@@ -554,6 +601,10 @@ int run_canonical_game() {
+             }
+         }
+ 
++        if (automation_complete) {
++            break;
++        }
++
+         sleep_microseconds(kFrameDelayMicroseconds);
+     }
+ 
+diff --git a/dusklight-main/platforms/psp/src/canonical_startup_entry.cpp b/dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
+index 5643efd..c2a8bbc 100644
+--- a/dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
