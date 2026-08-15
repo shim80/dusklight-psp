@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Export the source JStudio demo38_01 camera as a PSP DPCM track.
+
+The input is the unmodified ``demo38_01.stb`` resource from the legally
+provided GZ2P01 revision-0 image.  No source data is embedded in this tool.
+"""
+
+from __future__ import annotations
+
+import argparse
+import bisect
+import hashlib
+import math
+import struct
+import zlib
+from dataclasses import dataclass
+from pathlib import Path
+
+
+EXPECTED_STB_SHA256 = (
+    "e335d6d44c002dd25881aedd2f053a226be18cdd254d2049e0d78f2aa88b735d"
+)
+SOURCE_FPS = 30
+EXPECTED_SOURCE_FRAMES = 2400
+EXPECTED_SAMPLE_COUNT = 2401
+DPCM_HEADER_BYTES = 64
+DPCM_SAMPLE_BYTES = 32
+
+
+class ExportError(RuntimeError):
+    pass
+
+
+def align4(value: int) -> int:
+    return (value + 3) & ~3
+
+
+def u16be(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">H", data, offset)[0]
+
+
+def u32be(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">I", data, offset)[0]
+
+
+def f32be(data: bytes, offset: int) -> float:
+    return struct.unpack_from(">f", data, offset)[0]
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ExportError(message)
+
+
+def parse_variable_pair(data: bytes, offset: int) -> tuple[int, int, int]:
+    first = u16be(data, offset)
+    if first & 0x8000:
+        size = ((first & 0x7FFF) << 16) | u16be(data, offset + 2)
+        return size, u32be(data, offset + 4), 8
+    return first, u16be(data, offset + 2), 4
+
+
+@dataclass(frozen=True)
+class ListParameter:
+    keys: tuple[tuple[float, float], ...]
+    range_begin: float
+    range_end: float
+    interpolation: int
+    outside_begin: int
+    outside_end: int
+
+    def _outside(self, value: float) -> float:
+        difference = self.range_end - self.range_begin
+        relative = value - self.range_begin
+        outside = None
+        if relative < 0.0:
+            outside = self.outside_begin
+        elif relative >= difference:
+            outside = self.outside_end
+        if outside is None or outside == 0:
+            return value
+        if outside == 1:
+            return self.range_begin + math.fmod(relative, difference)
+        if outside == 2:
+            turn = math.fmod(relative, difference * 2.0)
+            if turn < 0.0:
+                turn += difference * 2.0
+            if turn >= difference:
+                turn = difference * 2.0 - turn
+            return self.range_begin + turn
+        if outside == 3:
+            return min(self.range_end, max(self.range_begin, value))
+        raise ExportError(f"unsupported FVB outside mode {outside}")
+
+    def sample(self, seconds: float) -> float:
+        # All demo38_01 camera functions use progress=0 and adjust=0.  This is
+        # JStudio TFunctionValue_list_parameter::getValue with interpolation 3.
+        parameter = self._outside(seconds)
+        times = [key[0] for key in self.keys]
+        upper = bisect.bisect_right(times, parameter)
+        if upper == 0:
+            return self.keys[0][1]
+        if upper == len(self.keys):
+            return self.keys[-1][1]
+        require(self.interpolation == 3, "camera FVB is not nonuniform B-spline")
+        return interpolate_bspline_nonuniform(self.keys, upper, parameter)
+
+
+def interpolate_bspline_nonuniform(
+    keys: tuple[tuple[float, float], ...], upper: int, parameter: float
+) -> float:
+    """Port of JStudio's update_INTERPOLATE_BSPLINE_dataMore3_."""
+    require(len(keys) >= 3, "B-spline needs at least three keys")
+    prev_time, prev_value = keys[upper - 1]
+    next_time, next_value = keys[upper]
+
+    values = [0.0, prev_value, next_value, 0.0]
+    knots = [0.0, 0.0, prev_time, next_time, 0.0, 0.0]
+    if upper == 1:
+        values[0] = 2.0 * prev_value - next_value
