@@ -1,0 +1,88 @@
+name: Bounded XLU fallback iteration
+
+on:
+  push:
+    branches:
+      - agent/psp-pc-fidelity-startup
+    paths:
+      - .github/workflows/fidelity-xlu-fallback-iteration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply bounded XLU fallback
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('dusklight-main/platforms/psp/src/playable_render.cpp')
+          s = p.read_text()
+          old = '''        const bool has_plan = room::read_room_material_pass_plan(
+            texture_package, source_material, &plan) == room::PackageError::Ok;
+        const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
+'''
+          new = '''        const bool has_plan = room::read_room_material_pass_plan(
+            texture_package, source_material, &plan) == room::PackageError::Ok;
+        room::AlphaMaterialState source_alpha = {};
+        const bool has_source_alpha = room::read_room_alpha_material_state(
+            texture_package, source_material, &source_alpha) ==
+            room::PackageError::Ok;
+        // Source XLU materials frequently depend on TEV/texture stages that a
+        // single PSP fallback pass cannot reproduce. Do not turn those into
+        // opaque white sheets: keep them hidden until MPV1 provides a bounded
+        // pass plan. Source-alpha overlays in the OPAQUE draw buffer (for
+        // example terrain/foliage edge layers) still render normally.
+        if (!has_plan && wanted == 2 && has_source_alpha &&
+            source_alpha.draw_buffer == 1) {
+            continue;
+        }
+        const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
+'''
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one material-plan seam, got {s.count(old)}')
+          p.write_text(s.replace(old, new))
+          PY
+          git diff --check
+          git diff -- dusklight-main/platforms/psp/src/playable_render.cpp
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl xz-utils
+      - name: Bootstrap pinned PSP toolchain
+        run: ./scripts/bootstrap-repro.sh
+      - name: Build product EBOOT
+        run: |
+          export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
+          export PSPSDK="$PSPDEV/psp/sdk"
+          export PATH="$PSPDEV/bin:$PSPSDK/bin:$PATH"
+          psp-cmake -S test/dusklight-psp -B .work/build/xlu-fallback -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build .work/build/xlu-fallback -j 4
+          "$PSPDEV/bin/psp-objdump" -f .work/build/xlu-fallback/dusklight_psp.elf | tee .work/xlu-objdump.log
+          grep -F 'architecture: mips:allegrex' .work/xlu-objdump.log
+          sha256sum .work/build/xlu-fallback/EBOOT.PBP | tee .work/xlu-eboot.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: psp-fidelity-xlu-fallback
+          path: |
+            .work/build/xlu-fallback/EBOOT.PBP
+            .work/xlu-eboot.sha256
+            .work/xlu-objdump.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Publish product change and clean iteration workflows
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dusklight-main/platforms/psp/src/playable_render.cpp
+          git rm .github/workflows/fidelity-xlu-fallback-iteration.yml
+          if [ -f .github/workflows/capture-harness.yml ]; then git rm .github/workflows/capture-harness.yml; fi
+          git diff --cached --check
+          git commit -m 'Avoid broken XLU fallback surfaces'
+          git push origin HEAD:agent/psp-pc-fidelity-startup
