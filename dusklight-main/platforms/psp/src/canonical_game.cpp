@@ -40,6 +40,7 @@ constexpr std::uint32_t kExpectedEssentialActors = 9;
 constexpr std::uint32_t kFrameDelayMicroseconds = 33333;
 constexpr std::uint32_t kCommandListBytes = 256 * 1024;
 alignas(16) std::uint8_t g_command_list[kCommandListBytes] = {};
+static environment::PspEnvironmentRuntime g_environment_runtime = {};
 
 void write_u16(std::uint8_t* output, std::uint16_t value) {
     output[0] = static_cast<std::uint8_t>(value);
@@ -233,7 +234,9 @@ playable::RealRoomRenderInput make_render_input(
     output.ui_state.action_prompt = runtime.state.action_prompt;
     output.ui_state.debug_visible = runtime.state.debug_visible;
     output.root_pose = link_runtime.root_pose.metrics;
-    output.environment = nullptr;
+    output.environment = g_environment_runtime.active_valid
+        ? &g_environment_runtime.material
+        : nullptr;
     output.shadows = nullptr;
     output.render_profile = playable::RenderProfile::KnownGoodUnlit;
     output.lighting_mode = playable::LightingMode::Off;
@@ -296,6 +299,26 @@ bool initialize_first_playable(
         kExpectedSourceActors) {
         *error_category = "scene contract";
         *error_detail = "unexpected source actor count";
+        unload_canonical_common_packages(common_packages);
+        unload_canonical_room_packages(room_packages);
+        return false;
+    }
+
+    room::EnvironmentRecordV4 source_environment = {};
+    g_environment_runtime.initialize();
+    if (room::read_dpsc_environment_v4(
+            room_packages->scene.view, &source_environment) !=
+            room::PackageError::Ok ||
+        start.room < 0 ||
+        source_environment.room_index !=
+            static_cast<std::uint32_t>(start.room) ||
+        g_environment_runtime.load(
+            room_packages->scene.view, source_environment.stage_hash,
+            source_environment.room_index, 1) != environment::Error::Ok ||
+        g_environment_runtime.activate(1) != environment::Error::Ok ||
+        !g_environment_runtime.consistent(1)) {
+        *error_category = "environment";
+        *error_detail = "source environment initialization failed";
         unload_canonical_common_packages(common_packages);
         unload_canonical_room_packages(room_packages);
         return false;
@@ -539,7 +562,7 @@ int run_canonical_game() {
                     log(
                         "DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK "
                         "stage=F_SP108 room=1 start=21 actors=9 "
-                        "render=game_alpha frame=1");
+                        "render=game_alpha_source_clear frame=1");
                     first_render_proven = true;
                     arm_first_playable_control_proof(
                         &control_proof, runtime.state);
