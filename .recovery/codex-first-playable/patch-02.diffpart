@@ -1,0 +1,220 @@
++++ b/dusklight-main/platforms/psp/src/canonical_startup_entry.cpp
+@@ -12,7 +12,7 @@
+ #include <pspctrl.h>
+ 
+ #include <algorithm>
+-#include <cmath>
++#include <cstdio>
+ #include <cstdint>
+ #include <cstring>
+ 
+@@ -32,7 +32,9 @@ constexpr std::uint32_t kTitleLogoClip = 7;
+ constexpr std::uint32_t kTitleLogoVertices = 24;
+ constexpr std::uint32_t kTitleLogoSubmeshes = 6;
+ constexpr std::uint32_t kCommandListBytes = 256 * 1024;
++constexpr std::uint32_t kStartupCaptureBytes = 512 * 272 * 2;
+ alignas(16) std::uint8_t g_startup_command_list[kCommandListBytes] = {};
++alignas(16) std::uint8_t g_startup_capture[kStartupCaptureBytes] = {};
+ 
+ struct TitleLogoGeometry {
+     float positions[kTitleLogoVertices][3];
+@@ -193,70 +195,109 @@ bool apply_title_logo_animation(
+     return true;
+ }
+ 
+-playable::Vec3 subtract(playable::Vec3 a, playable::Vec3 b) {
+-    return {a.x - b.x, a.y - b.y, a.z - b.z};
+-}
+-
+-playable::Vec3 add(playable::Vec3 a, playable::Vec3 b) {
+-    return {a.x + b.x, a.y + b.y, a.z + b.z};
+-}
+-
+-playable::Vec3 multiply(playable::Vec3 value, float scale) {
+-    return {value.x * scale, value.y * scale, value.z * scale};
+-}
+-
+-float dot(playable::Vec3 a, playable::Vec3 b) {
+-    return a.x * b.x + a.y * b.y + a.z * b.z;
+-}
+-
+-playable::Vec3 cross(playable::Vec3 a, playable::Vec3 b) {
+-    return {
+-        a.y * b.z - a.z * b.y,
+-        a.z * b.x - a.x * b.z,
+-        a.x * b.y - a.y * b.x};
+-}
+-
+-playable::Vec3 normalized(playable::Vec3 value) {
+-    const float length = std::sqrt(dot(value, value));
+-    if (!std::isfinite(length) || length < 0.00001f) {
+-        return {0.0f, 0.0f, 1.0f};
+-    }
+-    return multiply(value, 1.0f / length);
+-}
+-
+ playable::StaticModelRenderView make_title_model(
+     const CanonicalStartupPackages& packages,
+-    const playable::StartupTitleCamera& camera) {
++    const playable::StartupTitleCamera&) {
+     playable::StaticModelRenderView model = {};
+     model.model = packages.title_logo_model.bytes;
+     model.model_size = packages.title_logo_model.size;
+     model.textures = packages.title_logo_textures.bytes;
+     model.texture_size = packages.title_logo_textures.size;
+ 
+-    const playable::Vec3 forward = normalized(
+-        subtract(camera.center, camera.eye));
+-    const playable::Vec3 right = normalized(cross(forward, camera.up));
+-    const playable::Vec3 up = normalized(cross(right, forward));
+-    const playable::Vec3 position =
+-        add(camera.eye, multiply(forward, 3000.0f));
+-    model.matrix[0] = right.x;
+-    model.matrix[1] = up.x;
+-    model.matrix[2] = -forward.x;
+-    model.matrix[3] = position.x;
+-    model.matrix[4] = right.y;
+-    model.matrix[5] = up.y;
+-    model.matrix[6] = -forward.y;
+-    model.matrix[7] = position.y;
+-    model.matrix[8] = right.z;
+-    model.matrix[9] = up.z;
+-    model.matrix[10] = -forward.z;
+-    model.matrix[11] = position.z;
+-    model.scale[0] = 1.0f;
++    // daTitle_c::Draw uses cMtx_trans(0, 0, -430) and mirrors X.  Rendering
++    // switches to the source Item3D view before this model is submitted, so
++    // no camera-facing billboard or guessed distance belongs here.
++    model.matrix[0] = 1.0f;
++    model.matrix[5] = 1.0f;
++    model.matrix[10] = 1.0f;
++    model.matrix[11] = -430.0f;
++    model.scale[0] = -1.0f;
+     model.scale[1] = 1.0f;
+     model.scale[2] = 1.0f;
+     return model;
+ }
+ 
++bool capture_requested() {
++    constexpr char kRequest[] = "DUSKLIGHT_STARTUP_CAPTURE_V1\n";
++    char path[256] = {};
++    char payload[sizeof(kRequest)] = {};
++    std::uint32_t size = 0;
++    return make_game_path("STARTUP.CAPTURE.REQUEST", path, sizeof(path)) &&
++        read_file(path, payload, sizeof(payload), &size) &&
++        size == sizeof(kRequest) - 1 &&
++        std::memcmp(payload, kRequest, sizeof(kRequest) - 1) == 0;
++}
++
++bool automation_requested() {
++    constexpr char kRequest[] = "DUSKLIGHT_STARTUP_AUTOMATION_V1\n";
++    char path[256] = {};
++    char payload[sizeof(kRequest)] = {};
++    std::uint32_t size = 0;
++    return make_game_path("STARTUP.AUTOMATION.REQUEST", path, sizeof(path)) &&
++        read_file(path, payload, sizeof(payload), &size) &&
++        size == sizeof(kRequest) - 1 &&
++        std::memcmp(payload, kRequest, sizeof(kRequest) - 1) == 0;
++}
++
++void write_startup_error(const char* stage, int code) {
++    char path[256] = {};
++    char payload[192] = {};
++    if (stage == nullptr ||
++        !make_game_path("STARTUP.ERROR", path, sizeof(path))) {
++        return;
++    }
++    const int size = std::snprintf(
++        payload, sizeof(payload),
++        "format=DUSKLIGHT_STARTUP_ERROR_V1\nstage=%s\nerror_code=%d\n",
++        stage, code);
++    if (size > 0 && static_cast<std::size_t>(size) < sizeof(payload)) {
++        write_file(path, payload, static_cast<std::uint32_t>(size));
++    }
++}
++
++bool capture_startup_title(const playable::RenderMetrics& metrics) {
++    char frame_path[256] = {};
++    char metrics_path[256] = {};
++    char marker_path[256] = {};
++    if (!make_game_path("STARTUP_TITLE.5650", frame_path, sizeof(frame_path)) ||
++        !make_game_path(
++            "STARTUP_TITLE_CAPTURE.METRICS", metrics_path,
++            sizeof(metrics_path)) ||
++        !make_game_path("SMOKE.OK", marker_path, sizeof(marker_path)) ||
++        !playable::capture_playable_frame_5650(
++            g_startup_capture, sizeof(g_startup_capture)) ||
++        !write_file(frame_path, g_startup_capture, sizeof(g_startup_capture))) {
++        return false;
++    }
++    char report[512] = {};
++    const int report_size = std::snprintf(
++        report, sizeof(report),
++        "format=DUSKLIGHT_STARTUP_TITLE_CAPTURE_V1\n"
++        "width=480\nheight=272\nstride=512\n"
++        "pixel_format=GU_PSM_5650\n"
++        "title_translation=0,0,-430\n"
++        "title_scale=-1,1,1\n"
++        "room_material_plan_records=%lu\n"
++        "room_material_plan_exact_draws=%lu\n"
++        "room_material_plan_approximate_draws=%lu\n"
++        "room_material_plan_unsupported_draws=%lu\n"
++        "room_material_pass_draws=%lu\n",
++        static_cast<unsigned long>(metrics.room_material_plan_records),
++        static_cast<unsigned long>(
++            metrics.room_material_plan_exact_draws),
++        static_cast<unsigned long>(
++            metrics.room_material_plan_approximate_draws),
++        static_cast<unsigned long>(
++            metrics.room_material_plan_unsupported_draws),
++        static_cast<unsigned long>(metrics.room_material_pass_draws));
++    constexpr char kMarker[] = "DUSKLIGHT_PSP_STARTUP_CAPTURE_OK";
++    return report_size > 0 &&
++        static_cast<std::size_t>(report_size) < sizeof(report) &&
++        write_file(
++            metrics_path, report, static_cast<std::uint32_t>(report_size)) &&
++        write_file(marker_path, kMarker, sizeof(kMarker) - 1);
++}
++
+ bool initialize_logo_renderer(
+     const CanonicalStartupPackages& packages,
+     playable::RenderMetrics* metrics) {
+@@ -283,9 +324,11 @@ bool render_logo_segment(
+     std::uint16_t channel = 0;
+     switch (segment) {
+     case startup::Segment::BootWarning:
+-    case startup::Segment::ProgressivePrompt:
+         channel = 0;
+         break;
++    case startup::Segment::ProgressivePrompt:
++        channel = 3;
++        break;
+     case startup::Segment::NintendoLogo:
+         channel = 1;
+         break;
+@@ -312,6 +355,9 @@ int run_canonical_startup_then_game() {
+     const CanonicalStartupLoadError load_error =
+         load_canonical_startup_packages(&packages);
+     if (load_error != CanonicalStartupLoadError::Ok) {
++        write_startup_error(
++            canonical_startup_load_error_name(load_error),
++            -30 - static_cast<int>(load_error));
+         log_error(
+             canonical_startup_load_error_name(load_error),
+             -30 - static_cast<int>(load_error));
+@@ -321,6 +367,7 @@ int run_canonical_startup_then_game() {
+     const std::uint32_t opening_display_frames =
+         playable::startup_title_camera_display_frames(packages.title_camera.view);
+     if (opening_display_frames == 0) {
++        write_startup_error("opening_display_frames", 22);
+         unload_canonical_startup_packages(&packages);
+         shutdown();
+         return 22;
+@@ -328,6 +375,7 @@ int run_canonical_startup_then_game() {
+ 
+     TitleLogoGeometry title_geometry = {};
+     if (!initialize_title_logo_geometry(packages, &title_geometry)) {
++        write_startup_error("title_logo_geometry", 23);
+         unload_canonical_startup_packages(&packages);
+         shutdown();
+         return 23;
