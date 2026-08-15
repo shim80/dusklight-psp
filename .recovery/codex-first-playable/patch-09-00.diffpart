@@ -1,0 +1,100 @@
++
++def align(v,n=16): return (v+n-1)&~(n-1)
++def crc(blob):
++    b=bytearray(blob); b[12:16]=b'\0'*4; return zlib.crc32(b)&0xffffffff
++
++def swizzle16(raw,w,h):
++    row=w*2; out=bytearray()
++    for by in range(0,h,8):
++      for bx in range(0,row,16):
++       for y in range(8): out += raw[(by+y)*row+bx:(by+y)*row+bx+16]
++    return bytes(out)
++def pack_image(img,max_dim=256):
++    img=img.convert('RGBA')
++    if img.width>max_dim or img.height>max_dim:
++      s=min(max_dim/img.width,max_dim/img.height); img=img.resize((max(1,round(img.width*s)),max(1,round(img.height*s))),Image.Resampling.LANCZOS)
++    w,h=img.size; sw=align(w,8); sh=align(h,8); pix=list(img.get_flattened_data()) if hasattr(img,'get_flattened_data') else list(img.getdata()); al={a for *_,a in pix}; fmt=0 if al=={255} else 1 if al.issubset({0,255}) else 2
++    raw=bytearray(sw*sh*2)
++    for y in range(h):
++      for x in range(w):
++       r,g,b,a=img.getpixel((x,y))
++       v=(r>>3)|((g>>2)<<5)|((b>>3)<<11) if fmt==0 else ((r>>3)|((g>>3)<<5)|((b>>3)<<10)|((1 if a>=128 else 0)<<15) if fmt==1 else (r>>4)|((g>>4)<<4)|((b>>4)<<8)|((a>>4)<<12))
++       struct.pack_into('<H',raw,(y*sw+x)*2,v)
++    return w,h,sw,sh,fmt,swizzle16(bytes(raw),sw,sh)
++def mat_class(m):
++    ac=m.alpha_compare; bl=m.blend_mode
++    if m.pixel_engine_mode==GX.PixelEngineMode.Alpha_Test or not(ac.comp0==GX.CompareType.Always and ac.comp1==GX.CompareType.Always): return 1
++    if m.pixel_engine_mode==GX.PixelEngineMode.Opaque and bl.mode==GX.BlendMode.None_: return 0
++    return 2
++def parse_desc(shp,shape):
++    buf=shp.data.getbuffer(); off=shp.attribute_table_offset+shape.first_attribute_offset; out=[]
++    while True:
++      a,t=struct.unpack_from('>II',buf,off); off+=8
++      if a==0xff: break
++      if t!=3: raise ValueError(('index type',a,t))
++      out.append(a)
++    return out
++def strips(shp,shape):
++    buf=shp.data.getbuffer(); attrs=parse_desc(shp,shape)
++    for gi in range(shape.matrix_group_count):
++      go=shp.mtx_group_table_offset+(shape.first_matrix_group_index+gi)*8; size,po=struct.unpack_from('>II',buf,go); q=shp.primitive_data_offset+po; end=q+size
++      while q<end:
++       cmd=buf[q]; q+=1
++       if cmd==0: break
++       if cmd!=0x98: raise ValueError(('primitive',hex(cmd)))
++       count=struct.unpack_from('>H',buf,q)[0]; q+=2; st=[]
++       for _ in range(count):
++        d={}
++        for a in attrs: d[a]=struct.unpack_from('>H',buf,q)[0]; q+=2
++        st.append(d)
++       yield st
++def c32(rgba): r,g,b,a=rgba; return r|(g<<8)|(b<<16)|(a<<24)
++
++def export_model(bmd_path,out):
++    b=BMD(str(bmd_path)); mapping={}; cur=None
++    for n in b.inf1.flat_hierarchy:
++      if n.type==INF1NodeType.MATERIAL: cur=n.index
++      elif n.type==INF1NodeType.SHAPE: mapping[n.index]=cur
++    textures=[]; texmap={}
++    def add(img):
++      p=pack_image(img); k=(p[0],p[1],p[4],hashlib.sha256(p[5]).digest())
++      if k not in texmap: texmap[k]=len(textures); textures.append(p)
++      return texmap[k]
++    white=add(Image.new('RGBA',(8,8),(255,255,255,255)))
++    source_tex={}
++    for m in b.mat3.materials:
++      ti=next((x for x in m.textures if x is not None),None)
++      if ti is not None and ti not in source_tex: source_tex[ti]=add(b.tex1.textures[ti].render())
++    attrs=b.vtx1.attributes; vertices=[]; indices=[]; subs=[]; vmap={}; bounds=[float('inf')]*3+[-float('inf')]*3
++    for si,shape in enumerate(b.shp1.shapes):
++      mi=mapping[si]; m=b.mat3.materials[mi]; ti=next((x for x in m.textures if x is not None),None); tex=source_tex.get(ti,white); bucket=mat_class(m); first=len(indices)
++      for st in strips(b.shp1,shape):
++       ids=[]
++       for d in st:
++        pi=d[GX.Attr.Position.value]; ci=d.get(GX.Attr.Color0.value); ui=d.get(GX.Attr.Tex0.value); p=attrs[GX.Attr.Position][pi]
++        if ci is not None:
++          cf=attrs[GX.Attr.Color0][ci]; rgba=tuple(max(0,min(255,round(v*255))) for v in cf)
++        else:
++          col=m.material_colors[0]; rgba=(col.r,col.g,col.b,col.a) if col else (255,255,255,255)
++        uv=attrs[GX.Attr.Tex0][ui] if ui is not None else (0.,0.); key=(pi,ci if ci is not None else -1,ui if ui is not None else -1)
++        if key not in vmap:
++          vmap[key]=len(vertices); vertices.append((float(uv[0]),float(uv[1]),c32(rgba),float(p[0]),float(p[1]),float(p[2])))
++          for a in range(3): bounds[a]=min(bounds[a],p[a]); bounds[a+3]=max(bounds[a+3],p[a])
++        ids.append(vmap[key])
++       for i in range(2,len(ids)):
++        tri=(ids[i-2],ids[i-1],ids[i]) if i%2==0 else (ids[i-1],ids[i-2],ids[i])
++        if len(set(tri))==3: indices.extend(tri)
++      count=len(indices)-first; flags=(1 if m.z_mode.depth_test else 0)|(2 if m.z_mode.depth_write else 0)
++      subs.append((first,count,mi,tex,bucket,si,mi,flags,m.z_mode.depth_func.value))
++    if len(vertices)!=24 or len(subs)!=6: raise ValueError(('title logo contract',len(vertices),len(subs)))
++    head=bytearray(256); head[:4]=b'DPRM'; struct.pack_into('<HH',head,4,1,256); struct.pack_into('<IIIIIII',head,16,4,len(vertices),len(indices),len(indices)//3,len(subs),len(b.mat3.materials),len(textures)); struct.pack_into('<6f',head,48,*bounds); struct.pack_into('<I',head,72,256); struct.pack_into('<IIIIIII',head,80,24,0,4,8,12,16,20)
++    sections=bytearray(128); cur=align(384,16); vo=cur;cur+=len(vertices)*24;cur=align(cur,16);io=cur;cur+=len(indices)*2;cur=align(cur,16);so=cur;cur+=len(subs)*48
++    for i,(typ,off,cnt,stride) in enumerate([(1,vo,len(vertices),24),(2,io,len(indices),2),(3,so,len(subs),48),(4,0,len(b.mat3.materials),0)]): struct.pack_into('<IIIII',sections,i*32,typ,off,0,cnt,stride)
++    d=bytearray(cur); d[:256]=head; d[256:384]=sections; q=vo
++    for v in vertices: struct.pack_into('<ffIfff',d,q,*v);q+=24
++    q=io
++    for ix in indices:struct.pack_into('<H',d,q,ix);q+=2
++    q=so
++    for sm in subs:
++      first,count,mat,tex,buck,shape,src,flags,df=sm
++      struct.pack_into('<IIHHBBHHBB',d,q,first,count,mat,tex,buck,0,shape,src,flags,df);q+=48
