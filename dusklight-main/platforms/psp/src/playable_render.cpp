@@ -1100,18 +1100,27 @@ void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
         const bool has_plan = room::read_room_material_pass_plan(
             texture_package, source_material, &plan) == room::PackageError::Ok;
         room::AlphaMaterialState source_alpha = {};
-const bool has_source_alpha = room::read_room_alpha_material_state(
-    texture_package, source_material, &source_alpha) ==
-    room::PackageError::Ok;
-// Source XLU materials frequently depend on TEV/texture stages that a
-// single PSP fallback pass cannot reproduce. Do not turn those into
-// opaque white sheets: keep them hidden until MPV1 provides a bounded
-// pass plan. Source-alpha overlays in the OPAQUE draw buffer (for
-// example terrain/foliage edge layers) still render normally.
-if (!has_plan && wanted == 2 && has_source_alpha &&
-    source_alpha.draw_buffer == 1) {
-    continue;
-}
+        const bool has_source_alpha = room::read_room_alpha_material_state(
+            texture_package, source_material, &source_alpha) ==
+            room::PackageError::Ok;
+        const std::uint32_t room_texture_count =
+            read_u32(g_room_texture_package.bytes + 16);
+        const bool fallback_texture_has_alpha =
+            fallback_texture < room_texture_count &&
+            g_room_textures[fallback_texture].format != 0;
+        const bool fallback_needs_missing_tev_alpha =
+            has_source_alpha && source_alpha.draw_buffer == 1 &&
+            source_alpha.material_class == room::AlphaMaterialClass::AlphaBlend &&
+            source_alpha.blend_mode == 1 && source_alpha.blend_src == 4 &&
+            source_alpha.texture_count == 1 &&
+            source_alpha.texture_identities_complete &&
+            !fallback_texture_has_alpha;
+        // A single-pass PSP fallback cannot reconstruct TEV-generated alpha.
+        // Skip only unsafe XLU whose sole source texture is RGB565/opaque.
+        // Keep alpha-capable F_SP108 water and foam layers.
+        if (!has_plan && wanted == 2 && fallback_needs_missing_tev_alpha) {
+            continue;
+        }
         const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
         for (std::uint32_t pass_index = 0;
              pass_index < pass_count; ++pass_index) {
