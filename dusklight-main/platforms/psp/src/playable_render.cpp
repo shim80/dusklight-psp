@@ -1118,7 +1118,9 @@ void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
         // A single-pass PSP fallback cannot reconstruct TEV-generated alpha.
         // Skip only unsafe XLU whose sole source texture is RGB565/opaque.
         // Keep alpha-capable F_SP108 water and foam layers.
-        if (!has_plan && wanted == 2 && fallback_needs_missing_tev_alpha) {
+        if (wanted == 2 && fallback_needs_missing_tev_alpha &&
+            (!has_plan ||
+             plan.fidelity == room::MaterialPassFidelity::Unsupported)) {
             continue;
         }
         const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
