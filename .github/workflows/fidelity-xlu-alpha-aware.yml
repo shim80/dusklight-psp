@@ -25,47 +25,34 @@ jobs:
           from pathlib import Path
           p = Path('dusklight-main/platforms/psp/src/playable_render.cpp')
           s = p.read_text()
-          old = '''        room::AlphaMaterialState source_alpha = {};
-const bool has_source_alpha = room::read_room_alpha_material_state(
-    texture_package, source_material, &source_alpha) ==
-    room::PackageError::Ok;
-// Source XLU materials frequently depend on TEV/texture stages that a
-// single PSP fallback pass cannot reproduce. Do not turn those into
-// opaque white sheets: keep them hidden until MPV1 provides a bounded
-// pass plan. Source-alpha overlays in the OPAQUE draw buffer (for
-// example terrain/foliage edge layers) still render normally.
-if (!has_plan && wanted == 2 && has_source_alpha &&
-    source_alpha.draw_buffer == 1) {
-    continue;
-}
-'''
-          new = '''        room::AlphaMaterialState source_alpha = {};
-        const bool has_source_alpha = room::read_room_alpha_material_state(
-            texture_package, source_material, &source_alpha) ==
-            room::PackageError::Ok;
-        const std::uint32_t room_texture_count =
-            read_u32(g_room_texture_package.bytes + 16);
-        const bool fallback_texture_has_alpha =
-            fallback_texture < room_texture_count &&
-            g_room_textures[fallback_texture].format != 0;
-        const bool fallback_needs_missing_tev_alpha =
-            has_source_alpha && source_alpha.draw_buffer == 1 &&
-            source_alpha.material_class == room::AlphaMaterialClass::AlphaBlend &&
-            source_alpha.blend_mode == 1 && source_alpha.blend_src == 4 &&
-            source_alpha.texture_count == 1 &&
-            source_alpha.texture_identities_complete &&
-            !fallback_texture_has_alpha;
-        // A single-pass PSP fallback cannot reconstruct TEV-generated alpha.
-        // Skip only the unsafe XLU case where SRC_ALPHA is requested but the
-        // sole source texture is RGB565/opaque. Keep XLU materials that carry
-        // usable texture alpha (including the F_SP108 water/foam layers).
-        if (!has_plan && wanted == 2 && fallback_needs_missing_tev_alpha) {
-            continue;
-        }
-'''
-          if s.count(old) != 1:
-              raise SystemExit(f'expected one old XLU fallback block, got {s.count(old)}')
-          p.write_text(s.replace(old, new, 1))
+          begin = s.index('        room::AlphaMaterialState source_alpha = {};\n', s.index('void draw_room_bucket('))
+          end_marker = '        const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;\n'
+          end = s.index(end_marker, begin)
+          new = (
+              '        room::AlphaMaterialState source_alpha = {};\n'
+              '        const bool has_source_alpha = room::read_room_alpha_material_state(\n'
+              '            texture_package, source_material, &source_alpha) ==\n'
+              '            room::PackageError::Ok;\n'
+              '        const std::uint32_t room_texture_count =\n'
+              '            read_u32(g_room_texture_package.bytes + 16);\n'
+              '        const bool fallback_texture_has_alpha =\n'
+              '            fallback_texture < room_texture_count &&\n'
+              '            g_room_textures[fallback_texture].format != 0;\n'
+              '        const bool fallback_needs_missing_tev_alpha =\n'
+              '            has_source_alpha && source_alpha.draw_buffer == 1 &&\n'
+              '            source_alpha.material_class == room::AlphaMaterialClass::AlphaBlend &&\n'
+              '            source_alpha.blend_mode == 1 && source_alpha.blend_src == 4 &&\n'
+              '            source_alpha.texture_count == 1 &&\n'
+              '            source_alpha.texture_identities_complete &&\n'
+              '            !fallback_texture_has_alpha;\n'
+              '        // A single-pass PSP fallback cannot reconstruct TEV-generated alpha.\n'
+              '        // Skip only unsafe XLU whose sole source texture is RGB565/opaque.\n'
+              '        // Keep alpha-capable F_SP108 water and foam layers.\n'
+              '        if (!has_plan && wanted == 2 && fallback_needs_missing_tev_alpha) {\n'
+              '            continue;\n'
+              '        }\n'
+          )
+          p.write_text(s[:begin] + new + s[end:])
           PY
           git diff --check
           git diff -- dusklight-main/platforms/psp/src/playable_render.cpp
@@ -98,10 +85,7 @@ if (!has_plan && wanted == 2 && has_source_alpha &&
           needle = 'int run_canonical_startup_then_game() {\n'
           if s.count(needle) != 1:
               raise SystemExit('startup entry contract changed')
-          p.write_text(s.replace(
-              needle,
-              needle + '    // CI framebuffer harness only; restored before commit.\n    return run_canonical_game();\n',
-              1))
+          p.write_text(s.replace(needle, needle + '    // CI framebuffer harness only; restored before commit.\n    return run_canonical_game();\n', 1))
           PY
           export PSPDEV="$GITHUB_WORKSPACE/.tools/pspdev"
           export PSPSDK="$PSPDEV/psp/sdk"
