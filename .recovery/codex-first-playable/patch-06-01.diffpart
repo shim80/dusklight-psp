@@ -1,0 +1,100 @@
+         "samples=%u crc_fail_closed=1\n",
+         track.source_fps, track.source_frames, track.sample_count);
++
++    if (argc == 2) {
++        std::ifstream input(argv[1], std::ios::binary);
++        std::vector<std::uint8_t> source(
++            std::istreambuf_iterator<char>(input), {});
++        TrackView source_track = {};
++        const TrackError source_error = validate_track(
++            source.data(), static_cast<std::uint32_t>(source.size()),
++            &source_track);
++        if (source_error != TrackError::Ok ||
++            source_track.source_frames != 2400u ||
++            source_track.sample_count != 2401u) {
++            std::fprintf(
++                stderr, "source DPCM validation failed: %s\n",
++                track_error_name(source_error));
++            return 5;
++        }
++        Sample oracle = {};
++        // Desktop trace checkpoint 300 is source tick 298: dDemo::start()
++        // performs forward(0), then the first two update/display steps.
++        if (sample_source_frame(source_track, 298u, &oracle) !=
++                TrackError::Ok ||
++            std::fabs(oracle.eye[0] - 36756.99f) > 0.01f ||
++            std::fabs(oracle.eye[1] - -238.6534f) > 0.01f ||
++            std::fabs(oracle.eye[2] - -34663.188f) > 0.01f ||
++            std::fabs(oracle.center[0] - 36067.875f) > 0.01f ||
++            std::fabs(oracle.center[1] - -114.336784f) > 0.01f ||
++            std::fabs(oracle.center[2] - -34588.38f) > 0.01f ||
++            std::fabs(oracle.fov - 44.148586f) > 0.001f) {
++            std::fprintf(stderr, "source DPCM desktop oracle mismatch\n");
++            return 6;
++        }
++        std::printf(
++            "DEMO38_SOURCE_CAMERA_HOST_OK source_fps=%u "
++            "source_frames=%u samples=%u desktop_trace_offset=2\n",
++            source_track.source_fps, source_track.source_frames,
++            source_track.sample_count);
++    } else if (argc != 1) {
++        std::fprintf(stderr, "usage: %s [title_camera.dpcm]\n", argv[0]);
++        return 7;
++    }
+     return 0;
+ }
+diff --git a/toolchain/manifest.lock b/toolchain/manifest.lock
+index cb62922..f5be63d 100644
+--- a/toolchain/manifest.lock
++++ b/toolchain/manifest.lock
+@@ -127,3 +127,37 @@ installed_filename = ""
+ sha256 = "pending"
+ size_approx_mb = 1.0
+ install_dir = ".tools/psplinkusb"
++
++[[tool]]
++id = "gclib-source"
++status = "required"
++version = "64127742467acb633d51685b9b1798ab45bb4034"
++tag = "commit-64127742467acb633d51685b9b1798ab45bb4034"
++source_url = "https://github.com/LagoLunatic/gclib"
++download_url = "https://api.github.com/repos/shim80/dusklight-psp/actions/artifacts/9214661573/zip"
++archive = "gclib-6412774-source-temp.zip"
++archive_format = "zip+tar.gz"
++archive_root = "."
++installed_filename = ""
++sha256 = "73a6b473b8e940042be8a92b85c55f692bf4d433411406bfb972261c0020c56b"
++inner_sha256 = "e2452c0e0f2cb37ec5b6bb37b1a1b494cf0ef5c1180f08955fc293f53e0dfa57"
++size_approx_mb = 0.081
++install_dir = ".tools/sources/gclib/64127742467acb633d51685b9b1798ab45bb4034"
++license = "MIT"
++provenance_run = "https://github.com/shim80/dusklight-psp/actions/runs/31789021852"
++
++[[tool]]
++id = "github-cli-macos-arm64"
++status = "optional"
++version = "2.94.0"
++tag = "v2.94.0"
++source_url = "https://github.com/cli/cli"
++download_url = "https://github.com/cli/cli/releases/download/v2.94.0/gh_2.94.0_macOS_arm64.zip"
++archive = "gh_2.94.0_macOS_arm64.zip"
++archive_format = "zip"
++archive_root = "gh_2.94.0_macOS_arm64"
++installed_filename = "bin/gh"
++sha256 = "4f9bc1a5e77500737290a307b40b4c396a4d23729f55340f2a83f414410165a1"
++size_approx_mb = 13.8
++install_dir = ".tools/github-cli/2.94.0/gh_2.94.0_macOS_arm64"
++license = "MIT"
+diff --git a/tools/fsp102_environment_export.py b/tools/fsp102_environment_export.py
+new file mode 100644
+index 0000000..faecdd5
+--- /dev/null
++++ b/tools/fsp102_environment_export.py
+@@ -0,0 +1,361 @@
++#!/usr/bin/env python3
++from __future__ import annotations
++import dataclasses, hashlib, math, os, struct, sys, zlib
++from pathlib import Path
++from collections import OrderedDict
++
++if not hasattr(dataclasses, '_recursive_repr') and hasattr(dataclasses, 'recursive_repr'):
