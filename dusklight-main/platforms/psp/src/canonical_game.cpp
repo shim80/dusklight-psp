@@ -216,7 +216,7 @@ playable::RealRoomRenderInput make_render_input(
         runtime.state.interaction.x,
         runtime.state.interaction.y,
         runtime.state.interaction.z};
-    output.presentation = presentation::Profile::OpaqueOnly;
+    output.presentation = presentation::Profile::Game;
     output.ui_state.mode =
         runtime.state.mode == room::LoadState::Paused
             ? playable::GameMode::Paused
@@ -539,7 +539,7 @@ int run_canonical_game() {
                     log(
                         "DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK "
                         "stage=F_SP108 room=1 start=21 actors=9 "
-                        "render=opaque_unlit frame=1");
+                        "render=game_alpha frame=1");
                     first_render_proven = true;
                     arm_first_playable_control_proof(
                         &control_proof, runtime.state);
