@@ -1,9 +1,13 @@
 #include "dusk/psp/startup_camera_track.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
+#include <vector>
 
 namespace {
 
@@ -27,7 +31,7 @@ void write_f32(std::uint8_t* bytes, float value) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
     using namespace dusk::psp::camera;
     constexpr std::uint32_t kSourceFrames = 2;
     constexpr std::uint32_t kSamples = kSourceFrames + 1;
@@ -91,5 +95,46 @@ int main() {
         "STARTUP_CAMERA_TRACK_HOST_OK source_fps=%u source_frames=%u "
         "samples=%u crc_fail_closed=1\n",
         track.source_fps, track.source_frames, track.sample_count);
+
+    if (argc == 2) {
+        std::ifstream input(argv[1], std::ios::binary);
+        std::vector<std::uint8_t> source(
+            std::istreambuf_iterator<char>(input), {});
+        TrackView source_track = {};
+        const TrackError source_error = validate_track(
+            source.data(), static_cast<std::uint32_t>(source.size()),
+            &source_track);
+        if (source_error != TrackError::Ok ||
+            source_track.source_frames != 2400u ||
+            source_track.sample_count != 2401u) {
+            std::fprintf(
+                stderr, "source DPCM validation failed: %s\n",
+                track_error_name(source_error));
+            return 5;
+        }
+        Sample oracle = {};
+        // Desktop trace checkpoint 300 is source tick 298: dDemo::start()
+        // performs forward(0), then the first two update/display steps.
+        if (sample_source_frame(source_track, 298u, &oracle) !=
+                TrackError::Ok ||
+            std::fabs(oracle.eye[0] - 36756.99f) > 0.01f ||
+            std::fabs(oracle.eye[1] - -238.6534f) > 0.01f ||
+            std::fabs(oracle.eye[2] - -34663.188f) > 0.01f ||
+            std::fabs(oracle.center[0] - 36067.875f) > 0.01f ||
+            std::fabs(oracle.center[1] - -114.336784f) > 0.01f ||
+            std::fabs(oracle.center[2] - -34588.38f) > 0.01f ||
+            std::fabs(oracle.fov - 44.148586f) > 0.001f) {
+            std::fprintf(stderr, "source DPCM desktop oracle mismatch\n");
+            return 6;
+        }
+        std::printf(
+            "DEMO38_SOURCE_CAMERA_HOST_OK source_fps=%u "
+            "source_frames=%u samples=%u desktop_trace_offset=2\n",
+            source_track.source_fps, source_track.source_frames,
+            source_track.sample_count);
+    } else if (argc != 1) {
+        std::fprintf(stderr, "usage: %s [title_camera.dpcm]\n", argv[0]);
+        return 7;
+    }
     return 0;
 }

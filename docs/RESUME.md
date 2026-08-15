@@ -42,14 +42,16 @@ The gameplay renderer remains intentionally conservative while broader gameplay 
 
 ## 4. Startup / title checkpoint
 
-The real EBOOT has been exercised locally through:
+The current EBOOT was exercised locally in one isolated PPSSPP run through:
 
-`French warning -> startup logos/progressive -> F_SP102 opening -> title model`
+`French warning -> startup logos/progressive -> full source DPCM/F_SP102 opening -> title prompt -> START -> persistent file creation -> F_SP108 first frame`
 
-The F_SP102 opening now loads all nine known environment layers. Two blockers remain before the startup integration PR can leave draft:
+The F_SP102 opening loads all nine known environment layers. The two known source-side defects now have candidate fixes:
 
-1. multi-texture/TEV materials can render as large white/brown flats because the current PSP material fallback collapses source material composition too aggressively;
-2. the source title-logo model/animation loads but is displayed too small; recover the source/export transform contract rather than selecting an arbitrary visual scale.
+1. DPTX v3 stores bounded, explicitly classified material plans and the runtime executes up to two GU passes;
+2. the title actor uses the source Item3D view (FOV 45, eye Z -1000) and source model transform (Z -430, mirrored X), not a guessed billboard distance.
+
+These fixes are Allegrex-compiled, host-tested and PPSSPP-replayed. The title exporter now preserves joint-local geometry and source blend classification; this removed the double-transform/opaque-rectangle defect. Remaining complex F_SP102 plans and title BPK/BRK/BTK material animation are still partial. Read `docs/reports/203-fsp102-material-pass-title-item3d-checkpoint.md` before changing them.
 
 Do not commit a startup screenshot until these defects are corrected enough to satisfy the repository screenshot policy.
 
@@ -106,15 +108,24 @@ Opaque submissions may only be reordered where existing order/depth tests prove 
 
 **Do not work on issue #6.** That F_SP108 alpha-tested foliage regression is separately owned.
 
+## 7a. Current startup cinematic checkpoint
+
+PR #12 (`Render complete F_SP102 startup environment`) is the current intro branch. It keeps commercial-derived output local and adds only the deterministic exporter/bootstrap/build tooling plus the runtime asset-path contract.
+
+Current validated local export metrics: 24,348 vertices, 21,513 triangles, 46 submeshes/materials, 40 textures, 656,128 texture bytes and 48 passes. Classification is 2 exact, 41 approximate and 3 unsupported. DPRM SHA-256 `7af40bc7d9957c29d5bef2b9bca8ec11b0d89270a2118177354ab96dd8368b3c`; DPTX SHA-256 `066cf74114945a6b6c35f4fb2a900f26b4dec8acc5bb6a6ae30d621ab20e37a5`.
+
+Public checkpoint run `31776948473` on `f5dac2ed771b5979a123a80b9ee2b37e6c18e495` is fully green. Exact EBOOT SHA-256: `5ce0e73926752643670ab0a25b3d0fc872772883d365aaeeb33180061df1fb96`.
+
+The branch expects `data/startup/fsp102_environment.dprm/.dptx` under the source `demo38_01` DPCM camera. The exact local camera is generated from source STB SHA-256 `e335d6d44c002dd25881aedd2f053a226be18cdd254d2049e0d78f2aa88b735d`: 30 Hz, 2,400 ticks, 2,401 samples, DPCM SHA-256 `ae4630366f6c6599813674b6c79929fcec0ad2d6b747ea9a4eb1f8dd68be438f`. The current local Allegrex EBOOT SHA-256 is `ca75544bea82b549d06ae4a8232cbeac67d7f31efc4f517bb45dfd437b58b6ff`. That exact EBOOT completed the full startup/save/gameplay route in pinned PPSSPP v1.20.4. Keep PR #12 draft until the remaining explicitly partial title/material surfaces are corrected enough for repository screenshot acceptance.
+
 ## 8. Immediate next work
 
-1. implement/validate the F_SP102 material-pass plan foundation without touching issue #6;
-2. identify the exact affected F_SP102 source materials and classify each planned PSP representation;
-3. rerun the real startup EBOOT and confirm the large flat material artifacts are gone;
-4. recover/fix the title-logo transform/scale contract;
-5. replay `intro/opening -> title -> file select -> save -> F_SP108` in one EBOOT;
-6. add only source-faithful visual proof;
-7. then evaluate the startup branch for merge/release readiness.
+1. port only the source title BPK/BRK/BTK state required to reproduce the final title composition;
+2. refine only visibly wrong approximate/unsupported F_SP102 plans without touching issue #6;
+3. replay `intro/opening -> title -> file select -> save -> F_SP108` in one EBOOT after each correction;
+4. preserve the strict opt-in automation request and normal physical-input behavior;
+5. add only source-faithful visual proof;
+6. then evaluate the startup branch for merge/release readiness.
 
 Performance work after that should follow the independent issues created from report 202. Each optimization must show a measurable bottleneck and preserve behavioral/render equivalence.
 

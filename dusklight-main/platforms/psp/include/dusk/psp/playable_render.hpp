@@ -98,6 +98,11 @@ struct RenderMetrics {
     std::uint32_t room_alpha_exact_draws;
     std::uint32_t room_blend_exact_draws;
     std::uint32_t room_cull_exact_draws;
+    std::uint32_t room_material_plan_records;
+    std::uint32_t room_material_plan_exact_draws;
+    std::uint32_t room_material_plan_approximate_draws;
+    std::uint32_t room_material_plan_unsupported_draws;
+    std::uint32_t room_material_pass_draws;
     std::uint32_t room_pixel_regions_changed;
     std::uint16_t room_pixel_values[16];
     std::uint32_t original_actor_draw_calls;

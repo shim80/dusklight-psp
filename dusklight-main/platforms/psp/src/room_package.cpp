@@ -21,6 +21,14 @@ constexpr std::uint32_t kAlphaMaterialCountOffset = 76;
 constexpr std::uint32_t kAlphaMaterialFlagsOffset = 80;
 constexpr std::uint32_t kAlphaMaterialRecordSize = 40;
 constexpr std::uint32_t kAlphaMaterialMagic = 0x31564550u;  // PEV1
+constexpr std::uint32_t kMaterialPassHeaderMagicOffset = 84;
+constexpr std::uint32_t kMaterialPassTableOffsetOffset = 88;
+constexpr std::uint32_t kMaterialPassStrideOffset = 92;
+constexpr std::uint32_t kMaterialPassCountOffset = 96;
+constexpr std::uint32_t kMaterialPassFlagsOffset = 100;
+constexpr std::uint32_t kMaterialPassRecordSize = 48;
+constexpr std::uint32_t kMaterialPassItemSize = 20;
+constexpr std::uint32_t kMaterialPassMagic = 0x3156504du;  // MPV1
 
 bool range_valid(
     std::uint32_t offset,
@@ -218,7 +226,7 @@ PackageError validate_dprm(
 
 PackageError validate_room_dptx(
     const void* source, std::uint32_t size, PackageView* view) {
-    const PackageError base = validate_base(source, size, "DPTX", view, 2);
+    const PackageError base = validate_base(source, size, "DPTX", view, 3);
     if (base != PackageError::Ok) {
         return base;
     }
@@ -324,6 +332,49 @@ PackageError validate_room_dptx(
             }
         }
     }
+    if (read_u16(bytes + 4) >= 3) {
+        const std::uint32_t plan_table =
+            read_u32(bytes + kMaterialPassTableOffsetOffset);
+        const std::uint32_t plan_stride =
+            read_u32(bytes + kMaterialPassStrideOffset);
+        const std::uint32_t plan_count =
+            read_u32(bytes + kMaterialPassCountOffset);
+        if (read_u32(bytes + kMaterialPassHeaderMagicOffset) !=
+                kMaterialPassMagic ||
+            read_u32(bytes + kMaterialPassFlagsOffset) != 1 ||
+            plan_stride != kMaterialPassRecordSize ||
+            plan_count != materials ||
+            !range_valid(plan_table, plan_count, plan_stride, size)) {
+            return PackageError::Layout;
+        }
+        for (std::uint32_t index = 0; index < plan_count; ++index) {
+            const std::uint8_t* plan =
+                bytes + plan_table + index * plan_stride;
+            if (read_u16(plan) != index || plan[2] > 2 || plan[3] > 4 ||
+                plan[4] == 0 || plan[4] > kMaximumMaterialPasses) {
+                return PackageError::Layout;
+            }
+            for (std::uint32_t pass_index = 0;
+                 pass_index < plan[4]; ++pass_index) {
+                const std::uint8_t* pass =
+                    plan + 8 + pass_index * kMaterialPassItemSize;
+                const bool use_texture = (pass[5] & 2u) != 0;
+                if (pass[2] > 1 || pass[3] > 1 || pass[4] > 4 ||
+                    (pass[5] & ~3u) != 0 ||
+                    (use_texture && read_u16(pass) >= textures) ||
+                    (!use_texture && read_u16(pass) != 0xffffu) ||
+                    (pass_index != 0 && (pass[5] & 1u) != 0)) {
+                    return PackageError::Layout;
+                }
+            }
+            const std::uint8_t* first_pass = plan + 8;
+            if ((first_pass[5] & 2u) != 0 &&
+                read_u16(first_pass) !=
+                    read_u16(bytes + material_offset + index * material_stride)) {
+                return PackageError::Texture;
+            }
+        }
+    }
     return PackageError::Ok;
 }
 
@@ -374,6 +425,53 @@ PackageError read_room_alpha_material_state(
     state->texture_identities_complete = item[18] != 0;
     for (std::uint32_t index = 0; index < 8; ++index) {
         state->texture_ids[index] = read_u16(item + 20 + index * 2);
+    }
+    return PackageError::Ok;
+}
+
+PackageError read_room_material_pass_plan(
+    const PackageView& view,
+    std::uint16_t material_id,
+    MaterialPassPlan* plan) {
+    if (view.bytes == nullptr || plan == nullptr ||
+        read_u16(view.bytes + 4) < 3 ||
+        read_u32(view.bytes + kMaterialPassHeaderMagicOffset) !=
+            kMaterialPassMagic ||
+        read_u32(view.bytes + kMaterialPassStrideOffset) !=
+            kMaterialPassRecordSize ||
+        material_id >= read_u32(view.bytes + kMaterialPassCountOffset)) {
+        return PackageError::Material;
+    }
+    const std::uint32_t table =
+        read_u32(view.bytes + kMaterialPassTableOffsetOffset);
+    const std::uint32_t offset =
+        table + static_cast<std::uint32_t>(material_id) *
+                    kMaterialPassRecordSize;
+    if (offset > view.size || kMaterialPassRecordSize > view.size - offset) {
+        return PackageError::Range;
+    }
+    const std::uint8_t* item = view.bytes + offset;
+    if (read_u16(item) != material_id || item[2] > 2 || item[3] > 4 ||
+        item[4] == 0 || item[4] > kMaximumMaterialPasses) {
+        return PackageError::Layout;
+    }
+    *plan = {};
+    plan->source_material_id = material_id;
+    plan->fidelity = static_cast<MaterialPassFidelity>(item[2]);
+    plan->reason = static_cast<MaterialFallbackReason>(item[3]);
+    plan->pass_count = item[4];
+    for (std::uint32_t index = 0; index < plan->pass_count; ++index) {
+        const std::uint8_t* source =
+            item + 8 + index * kMaterialPassItemSize;
+        MaterialPass& destination = plan->passes[index];
+        destination.texture_id = read_u16(source);
+        destination.texture_effect =
+            static_cast<MaterialTextureEffect>(source[2]);
+        destination.texture_alpha = source[3] != 0;
+        destination.blend = static_cast<MaterialBlendPolicy>(source[4]);
+        destination.depth_write = (source[5] & 1u) != 0;
+        destination.use_texture = (source[5] & 2u) != 0;
+        destination.color = read_u32(source + 8);
     }
     return PackageError::Ok;
 }
