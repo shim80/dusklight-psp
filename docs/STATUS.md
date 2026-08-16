@@ -1,6 +1,6 @@
 # Dusklight PSP — current status
 
-Updated: 2026-08-14
+Updated: 2026-08-16
 
 ## Project direction
 
@@ -131,23 +131,136 @@ The canonical startup room paths now resolve to `data/startup/fsp102_environment
 
 Visual acceptance is still open because the previously materialized startup asset bundle is not present in the current local runtime. Do not merge PR #12 or publish a release based only on the public smoke.
 
+## PSP PC-fidelity/startup checkpoint
+
+Branch `agent/psp-pc-fidelity-startup` resumes the recovered F_SP102 material-pass/title checkpoint on top of the PR #12 branch and changes the rendering direction toward bounded PSP fidelity rather than a single-texture approximation.
+
+The DPTX contract is now v3 with `MPV1` material plans, capped at two GU passes per source material. The renderer applies per-pass texture selection, texture effect, blend policy and depth-write state. Recovered F_SP102 export metrics are 24,348 vertices, 21,513 triangles, 46 submeshes/materials, 40 textures, 656,128 texture bytes and 48 planned passes, classified as 2 exact, 41 approximate and 3 unsupported.
+
+The title no longer uses the arbitrary 3000-unit billboard placement. It uses the source Item3D camera path with 45-degree FOV, eye `(0,0,-1000)`, title translation `(0,0,-430)` and mirrored X.
+
+Generated startup is reduced to:
+
+`Dusklight team logo -> F_SP102 title -> START -> file select/save -> gameplay`
+
+Nintendo, Dolby, warning, progressive and realtime opening replay are no longer emitted by the new startup exporter. PSP controller mapping remains unchanged.
+
+GitHub Actions run `31819052956` is green for MPV1 host validation, reduced startup runtime/export validation, pinned PSPDEV/PPSSPP bootstrap and a full Allegrex link. EBOOT SHA-256: `9f3ec5f9a937c694ae1e3b4be1a37468037652c4e54b86f8c95d9f9278345eca`. Proof artifact ID: `9226218542`.
+
+This checkpoint does **not** close visual parity. The current execution environment does not expose the Twilight Princess ISO or Dusklight PC runtime/assets, so no new asset-backed PSP-vs-PC screenshot comparison was performed. Water/fog/background/F_SP108 tuning, UV/clamp/pass-order fixes driven by captures, and BPK/BRK/BTK material animation remain open.
+
+Detailed report: `docs/reports/205-psp-pc-fidelity-startup-checkpoint.md`.
+
+## Asset-backed reduced-startup replay
+
+The branch now has an opt-in PPSSPP route proof for the complete intended sequence:
+
+`Dusklight PSP team logo -> F_SP102 title -> START -> source-derived file select -> F_SP108/R01/start21`
+
+Final local request `startup-title-fidelity-v12` completed in 15,208 ms with six
+RGB565 captures, valid route metrics and marker
+`DUSKLIGHT_PSP_STARTUP_ROUTE_CAPTURE_OK`. The EBOOT is an Allegrex binary with
+SHA-256 `eb8d4412a674f18a0885ec659c681d1fc71c187ef637797b606c880bc6ad09e1`.
+
+The canonical startup paths now match the packaged `title_room` assets, the
+nonexistent camera package dependency is removed, and file select uses its DPSU
+panels/cursor rather than debug text. The F_SP108 MPV1 upgrade is reproducible in the
+asset build and the final gameplay capture retains the improved bounded water pass.
+
+Two title-material passes were tested and rejected because they produced a white
+rectangle and then a missing logo. Their code was removed and the recognizable
+baseline restored. Title composition and source-derived file-select typography remain
+open; this checkpoint is route/visual evidence, not PC parity.
+
+Detailed report: `docs/reports/206-startup-route-file-select-ppsspp.md`.
+
+## Safe Link shading framebuffer checkpoint
+
+The canonical F_SP108 game profile now replaces the rejected `SourceApprox` path with
+a controlled per-vertex wrapped diffuse approximation. Link source base/emissive
+colors are modulated by normalized F_SP108 ambient/key chroma using ambient strength
+`0.58`, key strength `0.32`, wrap bias `0.35` and a minimum illumination floor of
+`0.52`. Skinned model-space normals and the inverse-yaw world-to-model light transform
+were audited before tuning.
+
+Four identical PPSSPP startup routes compared unlit, ambient-only, wrapped and
+wrapped-plus-rim output. The accepted wrapped path keeps Link visible with measured
+vertex luminance `0.5349 / 0.6273 / 0.7863` (min/mean/max). The rim was rejected: its
+framebuffer change was too small relative to its per-vertex view-normalization cost.
+The final 64-level, 27-material LUT implementation measured 4,339 us on the first
+PPSSPP gameplay frame, down from 29,804 us for the initial implementation. This is
+emulator timing, not a physical-PSP FPS claim.
+
+The six-stage reduced startup route, source fog, alpha foliage, alpha water/foam and
+MPV1 maximum-two-pass behavior remain intact. No MPV1 revision, material animation,
+water UV scroll, bloom or global composite is claimed by this checkpoint.
+
+Detailed report: `docs/reports/207-safe-link-wrapped-lighting-ppsspp.md`.
+
+## Link and Epona name-entry checkpoint
+
+New-game startup no longer jumps directly from file select to F_SP108. It now includes
+interactive Link and Epona name screens with source Rodan text, D-pad navigation,
+Cross selection, Circle deletion, Triangle case switching and Start completion. The
+packaged startup route is now:
+
+`team logo -> F_SP102/title -> START -> file select -> Link name -> Epona name -> F_SP108 gameplay`
+
+The source-derived file-select background is retained. A deterministic offline merger
+copies the 63 required glyphs from the source HUD DPUI and repacks them with the file
+select in the existing 512x512 DPSU atlas. The PC stone frame, ornamental interior and
+accented grid remain bounded approximations rather than pixel parity.
+
+Final PPSSPP request `startup-name-entry-v3` completed in 15,689 ms with eight RGB565
+captures and valid route metrics/marker. The final Allegrex EBOOT SHA-256 is
+`54225746baf7711f6e5a5c164b068820b33795a632847806eb101c2c9c28e040`.
+The accepted Link shading, source fog, alpha foliage and water composition were not
+changed.
+
+`demo01_01` is still absent, and entered names are not yet persisted in the save-bank
+schema. Detailed report:
+`docs/reports/208-link-epona-name-entry-ppsspp.md`.
+
+## Bounded F_SP108 new-game intro checkpoint
+
+New games now enter a two-shot F_SP108 intro after Epona confirmation instead of
+jumping directly to gameplay. The intro uses the real F_SP108 room, Link runtime,
+source environment and Rodan font, hides the gameplay HUD, presents two opening lines,
+and then restores the HUD on the first playable frame. Cross advances, Start skips and
+each phase has a 270-frame fail-safe.
+
+Final PPSSPP request `startup-intro-v4` completed in 15,663 ms with ten RGB565
+captures, valid route metrics and marker. The final Allegrex EBOOT SHA-256 is
+`d88e29b0bb06192da9d49ae9bc8c3f02500892f0ae21702dfc4e1384ac291f4e`.
+The route preserves the accepted wrapped Link shading, source fog, alpha foliage and
+bounded water composition.
+
+This is a bounded narrative reconstruction, not exact `demo01_01` parity: Rusl,
+source event staging and cutscene animation are still absent. The 512x192 HUD atlas is
+now padded to a valid 512x256 PSP texture surface in EDRAM, which fixes dialogue glyph
+sampling while remaining inside the established budget. Detailed report:
+`docs/reports/209-fsp108-new-game-intro-ppsspp.md`.
+
 ## Active task
 
-Close the first release path in the canonical EBOOT:
+Close the first release path in the canonical EBOOT while increasing visible fidelity where the source assets are available:
 
-`intro/opening -> title -> file select -> create/load persistent slot -> NewGameTransition -> F_SP108 first playable -> PSP controls`
+`Dusklight logo -> title -> START -> file select -> Link/Epona names -> F_SP108 first playable -> PSP controls`
 
-Immediate gameplay-first target:
+Immediate targets:
 
-1. finish asset-backed acceptance of camera, source-prompt Cross action, START pause and resume in actual F_SP108;
-2. preserve the already-proven visible room+Link path;
-3. replace the synthetic/public startup presentation with the packaged source-faithful startup assets already present in the workspace;
-4. replay the complete startup/title/save/F_SP108 route in one EBOOT;
-5. only then promote the startup branch toward merge/release readiness.
+1. restore the missing F_SP102 `demo38` and animated-title staging;
+2. extend the bounded F_SP108 intro toward exact `demo01_01` actor/event parity;
+3. persist the chosen Link/Epona names and extend the bounded menu layout toward the PC BLO;
+4. add a compact, bounds-checked source-BTK material-animation binding and validate slow F_SP108 water UV motion;
+5. preserve the accepted wrapped Link shading and the already-proven save/control/gameplay route.
 
 ## Explicitly not closed
 
-- complete asset-backed canonical intro/title/save/F_SP108 one-EBOOT run with source-faithful startup presentation;
+- asset-backed visual acceptance of the reduced startup and title against Dusklight PC;
+- full water/fog/background/scene-layer parity for F_SP102/F_SP108;
+- complete TEV parity beyond the bounded two-pass PSP approximation;
+- title and scene BPK/BRK/BTK material animation coverage;
 - full first-playable control acceptance for camera/action/pause/resume in actual F_SP108;
 - full inventory/pause UI fidelity;
 - all chest sizes/items and full item message integration;

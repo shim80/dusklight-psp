@@ -189,7 +189,7 @@ const char* package_error_name(PackageError error) {
 
 const char* segment_name(Segment segment) {
     static constexpr const char* kNames[] = {
-        "boot_warning",
+        "team_logo",
         "nintendo_logo",
         "dolby_logo",
         "progressive_prompt",

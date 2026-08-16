@@ -14,7 +14,9 @@ inline constexpr std::uint32_t kMaximumPackageBytes =
 inline constexpr std::uint32_t kPackageCrcOffset = 28;
 
 enum class Segment : std::uint8_t {
-    BootWarning = 0,
+    TeamLogo = 0,
+    // Legacy source alias. New packages never emit a warning screen.
+    BootWarning = TeamLogo,
     NintendoLogo = 1,
     DolbyLogo = 2,
     ProgressivePrompt = 3,

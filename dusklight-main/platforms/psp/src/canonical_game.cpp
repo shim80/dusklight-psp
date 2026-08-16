@@ -4,7 +4,9 @@
 #include "dusk/psp/canonical_assets.hpp"
 #include "dusk/psp/canonical_common_loader.hpp"
 #include "dusk/psp/canonical_room_loader.hpp"
+#include "dusk/psp/canonical_startup_loader.hpp"
 #include "dusk/psp/first_playable_controls.hpp"
+#include "dusk/psp/link_lighting.hpp"
 #include "dusk/psp/platform.hpp"
 #include "dusk/psp/playable_render.hpp"
 #include "dusk/psp/playable_runtime.hpp"
@@ -12,6 +14,9 @@
 #include "dusk/psp/real_room_runtime.hpp"
 #include "dusk/psp/room_package.hpp"
 #include "dusk/psp/startup_save_flow.hpp"
+#include "dusk/psp/startup_intro.hpp"
+#include "dusk/psp/startup_name_entry.hpp"
+#include "dusk/psp/startup_route_capture.hpp"
 
 #include <pspctrl.h>
 #include <pspdebug.h>
@@ -19,6 +24,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -40,6 +46,84 @@ constexpr std::uint32_t kExpectedEssentialActors = 9;
 constexpr std::uint32_t kFrameDelayMicroseconds = 33333;
 constexpr std::uint32_t kCommandListBytes = 256 * 1024;
 alignas(16) std::uint8_t g_command_list[kCommandListBytes] = {};
+static environment::PspEnvironmentRuntime g_environment_runtime = {};
+static playable::LightingMode g_link_lighting_mode =
+    playable::LightingMode::SafeWrappedDiffuse;
+
+const char* link_lighting_mode_name(playable::LightingMode mode) {
+    switch (mode) {
+    case playable::LightingMode::Off: return "baseline";
+    case playable::LightingMode::SafeAmbient: return "ambient";
+    case playable::LightingMode::SafeWrappedDiffuse: return "wrapped";
+    case playable::LightingMode::SafeWrappedDiffuseRim: return "final";
+    default: return "unsupported";
+    }
+}
+
+void load_link_lighting_mode() {
+    g_link_lighting_mode =
+        playable::LightingMode::SafeWrappedDiffuse;
+    char path[256] = {};
+    if (!make_game_path(
+            "DUSKLIGHT.LINK.SHADING", path, sizeof(path))) {
+        return;
+    }
+    char value[16] = {};
+    std::uint32_t size = 0;
+    if (!read_file(path, value, sizeof(value), &size)) {
+        return;
+    }
+    const auto matches = [&](const char* expected) {
+        const std::size_t length = std::strlen(expected);
+        return (size == length ||
+                (size == length + 1 && value[length] == '\n')) &&
+               std::memcmp(value, expected, length) == 0;
+    };
+    if (matches("baseline")) {
+        g_link_lighting_mode = playable::LightingMode::Off;
+    } else if (matches("ambient")) {
+        g_link_lighting_mode = playable::LightingMode::SafeAmbient;
+    } else if (matches("wrapped")) {
+        g_link_lighting_mode =
+            playable::LightingMode::SafeWrappedDiffuse;
+    } else if (matches("final")) {
+        g_link_lighting_mode =
+            playable::LightingMode::SafeWrappedDiffuseRim;
+    }
+}
+
+void write_link_lighting_metrics(
+    const playable::RenderMetrics& metrics) {
+    char path[256] = {};
+    char contents[512] = {};
+    const int length = std::snprintf(
+        contents, sizeof(contents),
+        "mode=link_shading\n"
+        "lighting_mode=%s\n"
+        "lighting_cpu_us=%lu\n"
+        "vertex_luminance_min=%.6f\n"
+        "vertex_luminance_mean=%.6f\n"
+        "vertex_luminance_max=%.6f\n"
+        "safe_link_visible=%s\n"
+        "wrap_bias=%.2f\n"
+        "minimum_illumination=%.2f\n"
+        "error_code=0\n",
+        link_lighting_mode_name(g_link_lighting_mode),
+        static_cast<unsigned long>(metrics.lighting_cpu_us),
+        metrics.link_lighting_luminance_min,
+        metrics.link_lighting_luminance_mean,
+        metrics.link_lighting_luminance_max,
+        metrics.safe_link_visible ? "true" : "false",
+        playable::kSafeLinkLighting.wrap_bias,
+        playable::kSafeLinkLighting.minimum_illumination);
+    if (length <= 0 ||
+        static_cast<std::size_t>(length) >= sizeof(contents) ||
+        !make_game_path("LINK.SHADING.METRICS", path, sizeof(path))) {
+        return;
+    }
+    write_file(
+        path, contents, static_cast<std::uint32_t>(length));
+}
 
 void write_u16(std::uint8_t* output, std::uint16_t value) {
     output[0] = static_cast<std::uint8_t>(value);
@@ -130,38 +214,33 @@ bool drive_public_startup_to_file_select(startup::StartupSaveFlow* flow) {
            flow->phase() == startup::SaveFlowPhase::FileSelect;
 }
 
-void draw_file_select(
+bool draw_file_select(
     const startup::StartupSaveFlow& flow,
-    const char* status) {
-    pspDebugScreenSetBackColor(0x00000000);
-    pspDebugScreenSetTextColor(0x00FFFFFF);
-    pspDebugScreenClear();
-    pspDebugScreenSetXY(5, 2);
-    pspDebugScreenPrintf("D U S K L I G H T   P S P");
-    pspDebugScreenSetXY(5, 4);
-    pspDebugScreenPrintf("PUBLIC STARTUP ROUTE -> CANONICAL GAMEPLAY");
-    for (std::size_t index = 0; index < save::kSlotCount; ++index) {
-        const save::Slot& slot = flow.bank().slot(index);
-        pspDebugScreenSetXY(6, static_cast<int>(8 + index * 3));
-        pspDebugScreenPrintf(
-            "%c FILE %u   ", flow.selected_slot() == index ? '>' : ' ',
-            static_cast<unsigned>(index + 1));
-        if (!slot.occupied) {
-            pspDebugScreenPrintf("NEW GAME");
-        } else {
-            pspDebugScreenPrintf(
-                "CONTINUE  %-7s R%02d S%02u",
-                slot.start.stage.data(), static_cast<int>(slot.start.room),
-                static_cast<unsigned>(slot.start.start_point));
-        }
-    }
-    pspDebugScreenSetXY(5, 19);
-    pspDebugScreenPrintf("UP/DOWN FILE    X/START CONFIRM");
-    pspDebugScreenSetXY(5, 21);
-    pspDebugScreenPrintf("%-55s", status != nullptr ? status : "READY");
-    pspDebugScreenSetXY(5, 27);
-    pspDebugScreenPrintf("Startup presentation is synthetic/public in this build");
+    playable::RenderMetrics* metrics) {
+    return playable::render_startup_ui_frame_layers(
+        9, static_cast<std::uint16_t>(10 + flow.selected_slot()),
+        255, metrics);
 }
+
+bool draw_name_entry(
+    const startup::NameEntryRuntime& entry,
+    playable::RenderMetrics* metrics) {
+    playable::StartupNameEntryRenderInput input = {};
+    input.heading = entry.kind() == startup::NameEntryKind::Player
+        ? "Enter name" : "Enter horse name";
+    input.name = entry.name();
+    input.cursor_row = entry.cursor_row();
+    input.cursor_column = entry.cursor_column();
+    input.lowercase = entry.lowercase();
+    return playable::render_startup_name_entry_frame(input, metrics);
+}
+
+enum class NewGameNamePhase : std::uint8_t {
+    Inactive,
+    Player,
+    Horse,
+    Complete,
+};
 
 void draw_room_error(
     const save::StartContext& start,
@@ -216,7 +295,7 @@ playable::RealRoomRenderInput make_render_input(
         runtime.state.interaction.x,
         runtime.state.interaction.y,
         runtime.state.interaction.z};
-    output.presentation = presentation::Profile::OpaqueOnly;
+    output.presentation = presentation::Profile::Game;
     output.ui_state.mode =
         runtime.state.mode == room::LoadState::Paused
             ? playable::GameMode::Paused
@@ -233,13 +312,84 @@ playable::RealRoomRenderInput make_render_input(
     output.ui_state.action_prompt = runtime.state.action_prompt;
     output.ui_state.debug_visible = runtime.state.debug_visible;
     output.root_pose = link_runtime.root_pose.metrics;
-    output.environment = nullptr;
+    output.environment = g_environment_runtime.active_valid
+        ? &g_environment_runtime.material
+        : nullptr;
     output.shadows = nullptr;
-    output.render_profile = playable::RenderProfile::KnownGoodUnlit;
-    output.lighting_mode = playable::LightingMode::Off;
-    output.fog_mode = playable::FogMode::Off;
+    output.render_profile =
+        g_link_lighting_mode == playable::LightingMode::Off
+            ? playable::RenderProfile::KnownGoodUnlit
+            : playable::RenderProfile::CandidateGame;
+    output.lighting_mode = g_link_lighting_mode;
+    output.fog_mode = playable::FogMode::Source;
     output.shadow_mode = playable::ShadowMode::Off;
     return output;
+}
+
+void configure_new_game_intro_camera(
+    const startup::NewGameIntroShot& shot,
+    playable::RealRoomRenderInput* input) {
+    if (input == nullptr) {
+        return;
+    }
+    constexpr float kDegreesToRadians =
+        3.14159265358979323846f / 180.0f;
+    constexpr float kRadiansToDegrees =
+        180.0f / 3.14159265358979323846f;
+    constexpr float kSourceAspect = 4.0f / 3.0f;
+    constexpr float kPspAspect = 480.0f / 272.0f;
+    input->link_position = {
+        shot.actor_translation.x,
+        shot.actor_translation.y,
+        shot.actor_translation.z};
+    input->link_yaw =
+        shot.actor_rotation_degrees.y * kDegreesToRadians;
+    input->camera_eye = {
+        shot.camera_eye.x, shot.camera_eye.y, shot.camera_eye.z};
+    input->camera_center = {
+        shot.camera_center.x,
+        shot.camera_center.y,
+        shot.camera_center.z};
+    // Match TARGET_PC dCamera_c::widezoom_correction for a cinema-trimmed
+    // 16:9 viewport: preserve the source 4:3 horizontal framing by reducing
+    // the vertical FOV with the exact tangent-space aspect correction.
+    input->camera_fov = 2.0f * std::atan(
+        std::tan(shot.camera_fov * kDegreesToRadians * 0.5f) *
+        (kSourceAspect / kPspAspect)) * kRadiansToDegrees;
+    input->hide_hud = true;
+}
+
+playable::StaticModelRenderView make_intro_rusl_model(
+    const CanonicalIntroPackages& packages,
+    startup::NewGameIntroPhase phase,
+    const startup::NewGameIntroShot& shot) {
+    constexpr float kDegreesToRadians =
+        3.14159265358979323846f / 180.0f;
+    const float yaw =
+        shot.actor_rotation_degrees.y * kDegreesToRadians;
+    const float sine = std::sin(yaw);
+    const float cosine = std::cos(yaw);
+    const OwnedStartupRoomPackage& source =
+        phase == startup::NewGameIntroPhase::Wide
+            ? packages.rusl_wide_model
+            : packages.rusl_closeup_model;
+    playable::StaticModelRenderView model = {};
+    model.model = source.bytes;
+    model.model_size = source.size;
+    model.textures = packages.rusl_textures.bytes;
+    model.texture_size = packages.rusl_textures.size;
+    model.matrix[0] = cosine;
+    model.matrix[2] = sine;
+    model.matrix[3] = shot.actor_translation.x;
+    model.matrix[5] = 1.0f;
+    model.matrix[7] = shot.actor_translation.y;
+    model.matrix[8] = -sine;
+    model.matrix[10] = cosine;
+    model.matrix[11] = shot.actor_translation.z;
+    model.scale[0] = 1.0f;
+    model.scale[1] = 1.0f;
+    model.scale[2] = 1.0f;
+    return model;
 }
 
 bool initialize_first_playable(
@@ -296,6 +446,26 @@ bool initialize_first_playable(
         kExpectedSourceActors) {
         *error_category = "scene contract";
         *error_detail = "unexpected source actor count";
+        unload_canonical_common_packages(common_packages);
+        unload_canonical_room_packages(room_packages);
+        return false;
+    }
+
+    room::EnvironmentRecordV4 source_environment = {};
+    g_environment_runtime.initialize();
+    if (room::read_dpsc_environment_v4(
+            room_packages->scene.view, &source_environment) !=
+            room::PackageError::Ok ||
+        start.room < 0 ||
+        source_environment.room_index !=
+            static_cast<std::uint32_t>(start.room) ||
+        g_environment_runtime.load(
+            room_packages->scene.view, source_environment.stage_hash,
+            source_environment.room_index, 1) != environment::Error::Ok ||
+        g_environment_runtime.activate(1) != environment::Error::Ok ||
+        !g_environment_runtime.consistent(1)) {
+        *error_category = "environment";
+        *error_detail = "source environment initialization failed";
         unload_canonical_common_packages(common_packages);
         unload_canonical_room_packages(room_packages);
         return false;
@@ -383,6 +553,7 @@ int run_canonical_game() {
 
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
+    load_link_lighting_mode();
 
     char save_path[256] = {};
     if (!make_game_path("dusklight-save.bin", save_path, sizeof(save_path))) {
@@ -409,27 +580,60 @@ int run_canonical_game() {
         return 5;
     }
 
+    OwnedStartupUi file_select_ui = {};
+    playable::RenderMetrics file_select_metrics = {};
+    if (load_canonical_file_select_ui(&file_select_ui) !=
+            CanonicalStartupLoadError::Ok ||
+        !playable::initialize_startup_ui_renderer(
+            file_select_ui.view, g_command_list, sizeof(g_command_list),
+            &file_select_metrics)) {
+        unload_canonical_startup_ui(&file_select_ui);
+        log_error("player-facing file select initialization failed", -22);
+        shutdown();
+        return 5;
+    }
+    bool file_select_renderer_active = true;
+    const bool capture_route = startup_route_capture_enabled();
+    bool captured_file_select = false;
+    bool captured_player_name = false;
+    bool captured_horse_name = false;
+    bool captured_intro_wide = false;
+    bool captured_intro_closeup = false;
+    bool captured_gameplay = false;
+
     static CanonicalRoomPackages room_packages = {};
     static CanonicalCommonPackages common_packages = {};
+    static CanonicalIntroPackages intro_packages = {};
     static room::RealRoomRuntime runtime = {};
     static actor::ActorSystem actors = {};
     static playable::Runtime link_runtime = {};
     static playable::RenderMetrics render_metrics = {};
     controls::MapperState mapper = {};
+    startup::NameEntryRuntime name_entry = {};
+    startup::NewGameIntroRuntime new_game_intro = {};
+    NewGameNamePhase name_phase = NewGameNamePhase::Inactive;
+    char selected_player_name[
+        startup::NameEntryRuntime::kMaximumNameBytes + 1] = {};
     FirstPlayableControlProof control_proof = {};
     bool gameplay_active = false;
     bool actor_system_active = false;
     bool renderer_active = false;
+    bool intro_packages_active = false;
     bool terminal_room_error = false;
     bool first_render_proven = false;
     bool controls_proven = false;
     save::StartContext handoff = {};
 
-    draw_file_select(
-        flow,
-        flow.last_storage_result() == save::StorageResult::Ok
-            ? "SAVE BANK LOADED - SELECT FILE"
-            : "SELECT FILE");
+    if (!draw_file_select(flow, &file_select_metrics)) {
+        playable::shutdown_renderer();
+        unload_canonical_startup_ui(&file_select_ui);
+        shutdown();
+        return 5;
+    }
+    if (capture_route) {
+        captured_file_select = capture_startup_route_frame(
+            "startup-file-select.5650");
+    }
 
     for (;;) {
         SceCtrlData pad = {};
@@ -442,36 +646,120 @@ int run_canonical_game() {
         sample.buttons = pad.Buttons;
         sample.analog_x = pad.Lx;
         sample.analog_y = pad.Ly;
+        const std::uint32_t previous_buttons = mapper.previous_buttons;
         const playable::Input input =
             controls::map_gameplay_input(sample, &mapper);
+        const auto pressed = [&](std::uint32_t mask) {
+            return (pad.Buttons & mask) != 0 &&
+                   (previous_buttons & mask) == 0;
+        };
+        const bool route_confirm =
+            capture_route && captured_file_select &&
+            flow.phase() == startup::SaveFlowPhase::FileSelect;
 
         if (!gameplay_active && !terminal_room_error &&
             flow.phase() == startup::SaveFlowPhase::FileSelect &&
             (input.up_pressed || input.down_pressed ||
-             input.action_pressed || input.pause_pressed)) {
+             input.action_pressed || input.pause_pressed || route_confirm)) {
             startup::SaveFlowInput flow_input = {};
             flow_input.up = input.up_pressed;
             flow_input.down = input.down_pressed;
-            flow_input.confirm = input.action_pressed;
+            flow_input.confirm = input.action_pressed || route_confirm;
             flow_input.start = input.pause_pressed;
             if (!flow.tick(flow_input)) {
-                draw_file_select(flow, "SAVE FLOW ERROR");
+                log_error("player-facing save flow failed", -23);
             } else {
-                draw_file_select(
-                    flow,
-                    flow.phase() == startup::SaveFlowPhase::Transition
-                        ? "TRANSITION TO GAMEPLAY"
-                        : "SELECT FILE");
+                draw_file_select(flow, &file_select_metrics);
+            }
+        }
+
+        bool initialized_name_this_frame = false;
+        if (!gameplay_active && !terminal_room_error &&
+            flow.phase() == startup::SaveFlowPhase::Transition &&
+            flow.selected_action() == save::FileSelectAction::NewGame &&
+            name_phase == NewGameNamePhase::Inactive) {
+            name_entry.initialize(startup::NameEntryKind::Player, "Link");
+            name_phase = NewGameNamePhase::Player;
+            initialized_name_this_frame = true;
+            if (!draw_name_entry(name_entry, &file_select_metrics)) {
+                log_error("player name entry render failed", -24);
+                terminal_room_error = true;
+            } else if (capture_route) {
+                captured_player_name = capture_startup_route_frame(
+                    "startup-player-name.5650");
             }
         }
 
         if (!gameplay_active && !terminal_room_error &&
-            flow.phase() == startup::SaveFlowPhase::Transition) {
+            (name_phase == NewGameNamePhase::Player ||
+             name_phase == NewGameNamePhase::Horse) &&
+            !initialized_name_this_frame) {
+            const bool route_finish = capture_route &&
+                (name_phase == NewGameNamePhase::Player
+                     ? captured_player_name
+                     : captured_horse_name);
+            startup::NameEntryInput name_input = {};
+            name_input.left = pressed(PSP_CTRL_LEFT);
+            name_input.right = pressed(PSP_CTRL_RIGHT);
+            name_input.up = input.up_pressed;
+            name_input.down = input.down_pressed;
+            name_input.confirm = input.action_pressed;
+            name_input.erase = input.cancel_pressed;
+            name_input.toggle_case = pressed(PSP_CTRL_TRIANGLE);
+            name_input.finish = input.pause_pressed || route_finish;
+            const bool changed =
+                name_input.left || name_input.right || name_input.up ||
+                name_input.down || name_input.confirm || name_input.erase ||
+                name_input.toggle_case || name_input.finish;
+            if (changed && !name_entry.tick(name_input)) {
+                log_error("name entry update failed", -25);
+                terminal_room_error = true;
+            } else if (name_entry.confirmed()) {
+                if (name_phase == NewGameNamePhase::Player) {
+                    std::memcpy(
+                        selected_player_name, name_entry.name(),
+                        name_entry.length() + 1);
+                    name_entry.initialize(
+                        startup::NameEntryKind::Horse, "Epona");
+                    name_phase = NewGameNamePhase::Horse;
+                    if (!draw_name_entry(
+                            name_entry, &file_select_metrics)) {
+                        log_error("horse name entry render failed", -26);
+                        terminal_room_error = true;
+                    } else if (capture_route) {
+                        captured_horse_name = capture_startup_route_frame(
+                            "startup-horse-name.5650");
+                    }
+                } else {
+                    char message[96] = {};
+                    std::snprintf(
+                        message, sizeof(message),
+                        "DUSKLIGHT_PSP_NAME_ENTRY_OK player=%s horse=%s",
+                        selected_player_name, name_entry.name());
+                    log(message);
+                    name_phase = NewGameNamePhase::Complete;
+                }
+            } else if (changed &&
+                       !draw_name_entry(name_entry, &file_select_metrics)) {
+                log_error("name entry redraw failed", -27);
+                terminal_room_error = true;
+            }
+        }
+
+        if (!gameplay_active && !terminal_room_error &&
+            flow.phase() == startup::SaveFlowPhase::Transition &&
+            (flow.selected_action() != save::FileSelectAction::NewGame ||
+             name_phase == NewGameNamePhase::Complete)) {
             if (!flow.tick({false, false, false, false, false, true})) {
-                draw_file_select(flow, "NEW GAME TRANSITION ERROR");
+                log_error("new game transition failed", -24);
                 terminal_room_error = true;
             } else if (flow.phase() == startup::SaveFlowPhase::HandoffReady &&
                        flow.consume_handoff(&handoff)) {
+                if (file_select_renderer_active) {
+                    playable::shutdown_renderer();
+                    file_select_renderer_active = false;
+                    unload_canonical_startup_ui(&file_select_ui);
+                }
                 const char* error_category = "canonical gameplay";
                 const char* error_detail = "unknown failure";
                 if (!initialize_first_playable(
@@ -484,11 +772,100 @@ int run_canonical_game() {
                     gameplay_active = true;
                     actor_system_active = true;
                     renderer_active = true;
+                    const bool intro_enabled =
+                        flow.selected_action() ==
+                        save::FileSelectAction::NewGame;
+                    if (intro_enabled) {
+                        const CanonicalStartupLoadError intro_error =
+                            load_canonical_intro_packages(&intro_packages);
+                        if (intro_error != CanonicalStartupLoadError::Ok) {
+                            log_error(
+                                canonical_startup_load_error_name(intro_error),
+                                -28);
+                            terminal_room_error = true;
+                            gameplay_active = false;
+                        } else {
+                            intro_packages_active = true;
+                        }
+                    }
+                    new_game_intro.initialize(
+                        intro_enabled && intro_packages_active);
                 }
             }
         }
 
-        if (gameplay_active) {
+        const bool intro_was_active =
+            gameplay_active && new_game_intro.active();
+        if (intro_was_active) {
+            const startup::NewGameIntroPhase phase =
+                new_game_intro.phase();
+            const startup::NewGameIntroShot* shot =
+                new_game_intro.shot();
+            const bool route_advance = capture_route &&
+                (phase == startup::NewGameIntroPhase::Wide
+                     ? captured_intro_wide
+                     : captured_intro_closeup);
+            link_runtime.packages.animations =
+                phase == startup::NewGameIntroPhase::Wide
+                    ? intro_packages.link_wide_animation.view
+                    : intro_packages.link_closeup_animation.view;
+            if (shot == nullptr ||
+                !playable::apply_source_animation_resource_and_skin(
+                    &link_runtime,
+                    shot->link_body_bck_id,
+                    shot->link_animation_frame +
+                        static_cast<float>(new_game_intro.phase_frames()))) {
+                log_error("new game intro animation failed", -28);
+                terminal_room_error = true;
+                gameplay_active = false;
+            } else {
+                playable::MessageOverlayRenderInput overlay = {};
+                overlay.text = new_game_intro.message();
+                overlay.source_message_id = shot->source_message_id;
+                overlay.visible_characters = 0xffffu;
+                overlay.active = true;
+                overlay.awaiting_confirm = true;
+                playable::RealRoomRenderInput intro_input =
+                    make_render_input(runtime, link_runtime);
+                intro_input.message_overlay = &overlay;
+                configure_new_game_intro_camera(*shot, &intro_input);
+                const playable::StaticModelRenderView rusl =
+                    make_intro_rusl_model(intro_packages, phase, *shot);
+                if (!playable::render_real_room_frame_with_models(
+                        link_runtime, intro_input, &rusl, 1,
+                        &render_metrics)) {
+                    log_error("new game intro render failed", -29);
+                    terminal_room_error = true;
+                    gameplay_active = false;
+                } else {
+                    if (capture_route &&
+                        phase == startup::NewGameIntroPhase::Wide &&
+                        !captured_intro_wide) {
+                        captured_intro_wide = capture_startup_route_frame(
+                            "startup-intro-wide.5650");
+                    } else if (capture_route &&
+                               phase ==
+                                   startup::NewGameIntroPhase::Closeup &&
+                               !captured_intro_closeup) {
+                        captured_intro_closeup =
+                            capture_startup_route_frame(
+                                "startup-intro-closeup.5650");
+                    }
+                    if (!new_game_intro.tick({
+                            input.action_pressed || route_advance,
+                            input.pause_pressed})) {
+                        log_error("new game intro update failed", -30);
+                        terminal_room_error = true;
+                        gameplay_active = false;
+                    } else if (new_game_intro.complete()) {
+                        link_runtime.packages.animations =
+                            common_packages.link_animations.view;
+                    }
+                }
+            }
+        }
+
+        if (gameplay_active && !intro_was_active) {
             room::set_link_animation_motion(
                 &runtime,
                 playable::source_foot_motion_raw(link_runtime),
@@ -539,8 +916,16 @@ int run_canonical_game() {
                     log(
                         "DUSKLIGHT_PSP_FIRST_PLAYABLE_RENDER_OK "
                         "stage=F_SP108 room=1 start=21 actors=9 "
-                        "render=opaque_unlit frame=1");
+                        "render=game_alpha_source_fog frame=1");
                     first_render_proven = true;
+                    write_link_lighting_metrics(render_metrics);
+                    if (capture_route && !captured_gameplay) {
+                        captured_gameplay = capture_startup_route_frame(
+                            "startup-gameplay.5650");
+                        if (captured_gameplay) {
+                            complete_startup_route_capture();
+                        }
+                    }
                     arm_first_playable_control_proof(
                         &control_proof, runtime.state);
                 } else if (!controls_proven &&
@@ -559,6 +944,13 @@ int run_canonical_game() {
 
     if (renderer_active) {
         playable::shutdown_renderer();
+    }
+    if (file_select_renderer_active) {
+        playable::shutdown_renderer();
+    }
+    unload_canonical_startup_ui(&file_select_ui);
+    if (intro_packages_active) {
+        unload_canonical_intro_packages(&intro_packages);
     }
     if (actor_system_active) {
         actor::destroy_actor_system(&actors);

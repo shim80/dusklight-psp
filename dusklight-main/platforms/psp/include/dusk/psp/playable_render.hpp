@@ -22,6 +22,9 @@ enum class RenderProfile : std::uint8_t {
 
 enum class LightingMode : std::uint8_t {
     SourceApprox,
+    SafeAmbient,
+    SafeWrappedDiffuse,
+    SafeWrappedDiffuseRim,
     Off,
     Debug,
     WhiteAmbient,
@@ -55,7 +58,7 @@ struct RenderProfileConfig {
 constexpr RenderProfileConfig render_profile_config(RenderProfile profile) {
     return profile == RenderProfile::CandidateGame
         ? RenderProfileConfig{
-              LightingMode::SourceApprox,
+              LightingMode::SafeWrappedDiffuse,
               FogMode::Source,
               ShadowMode::ProjectedLink}
         : RenderProfileConfig{
@@ -140,6 +143,10 @@ struct RenderMetrics {
     bool color_channel_mapping_valid;
     bool light_transform_valid;
     bool source_approx_link_visible;
+    bool safe_link_visible;
+    float link_lighting_luminance_min;
+    float link_lighting_luminance_mean;
+    float link_lighting_luminance_max;
     bool actor_bucket_state_applied;
     std::uint32_t ge_submit_us;
     std::uint32_t ge_sync_us;
@@ -169,6 +176,7 @@ struct RealRoomRenderInput {
     presentation::Profile presentation;
     GameplayState ui_state;
     const MessageOverlayRenderInput* message_overlay;
+    bool hide_hud;
     PspLinkRootPoseMetrics root_pose;
     const environment::PspMaterialEnvironmentState* environment;
     const shadow::PspShadowSystem* shadows;
@@ -224,6 +232,14 @@ struct StartupTitleCamera {
     float far_plane;
 };
 
+struct StartupNameEntryRenderInput {
+    const char* heading;
+    const char* name;
+    std::uint8_t cursor_row;
+    std::uint8_t cursor_column;
+    bool lowercase;
+};
+
 bool initialize_renderer(
     const PackageView& textures,
     const PackageView& ui,
@@ -243,6 +259,9 @@ bool render_startup_ui_frame_layers(
     std::uint16_t base_channel,
     std::uint16_t overlay_channel,
     std::uint8_t fade_alpha,
+    RenderMetrics* metrics);
+bool render_startup_name_entry_frame(
+    const StartupNameEntryRenderInput& input,
     RenderMetrics* metrics);
 bool initialize_startup_title_renderer(
     const startup::UiPackageView& ui,

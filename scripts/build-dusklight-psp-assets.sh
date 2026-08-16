@@ -34,6 +34,9 @@ ensure_startup_assets() {
     file_select.dpsu \
     title_room.dprm title_room.dptx \
     title_logo.dprm title_logo.dptx title_logo.dpan \
+    demo01_rusl_wide.dprm demo01_rusl_closeup.dprm \
+    demo01_rusl.dptx demo01_link_wide.dpan \
+    demo01_link_closeup.dpan \
     fsp108_room.dprm fsp108_room.dptx \
     fsp108_room.dpcl fsp108_room.dpsc; do
     [ -f "$STARTUP/$package" ] ||
@@ -70,9 +73,16 @@ prepare_tree() {
     startup.dpst startup_logos.dpsu title_ui.dpsu \
     file_select.dpsu \
     title_room.dprm title_room.dptx \
-    title_logo.dprm title_logo.dptx title_logo.dpan; do
+    title_logo.dprm title_logo.dptx title_logo.dpan \
+    demo01_rusl_wide.dprm demo01_rusl_closeup.dprm \
+    demo01_rusl.dptx demo01_link_wide.dpan \
+    demo01_link_closeup.dpan; do
     cp -- "$STARTUP/$package" "$destination/data/startup/$package"
   done
+  python3 "$PROJECT_ROOT/tools/merge_startup_name_glyphs.py" \
+    --file-select "$destination/data/startup/file_select.dpsu" \
+    --hud "$destination/data/common/hud.dpui" \
+    --out "$destination/data/startup/file_select.dpsu"
   printf '%s\n' \
     "owner=global" \
     "source=data/common/hud.dpui" \
@@ -86,6 +96,9 @@ prepare_tree() {
     --manifest "$PROJECT_ROOT/reference/parity/alpha-f-sp108/material-state-v1.json" \
     --dprm "$destination/data/stages/F_SP108/R01/room.dprm" \
     --dptx "$destination/data/stages/F_SP108/R01/room.dptx"
+  python3 "$PROJECT_ROOT/tools/room_material_pass_upgrade.py" \
+    "$destination/data/stages/F_SP108/R01/room.dptx" \
+    "$destination/data/stages/F_SP108/R01/room.dptx"
   for room in R09 R02; do
     for package in room.dprm room.dptx room.dpcl room.dpsc ROOM.MANIFEST; do
       cp -- "$ROOMS/stages/D_MN10/$room/$package" \

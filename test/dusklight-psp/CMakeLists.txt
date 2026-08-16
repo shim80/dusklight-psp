@@ -47,9 +47,18 @@ add_executable(dusklight_psp
     "${DUSK_PSP_ROOT}/src/save_storage.cpp"
     "${DUSK_PSP_ROOT}/src/startup_package.cpp"
     "${DUSK_PSP_ROOT}/src/startup_ui_package.cpp"
+    "${DUSK_PSP_ROOT}/src/startup_name_entry.cpp"
+    "${DUSK_PSP_ROOT}/src/startup_intro.cpp"
     "${DUSK_PSP_ROOT}/src/startup_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/startup_save_flow.cpp"
+    "${DUSK_PSP_ROOT}/src/startup_route_capture.cpp"
     "${DUSK_PSP_ROOT}/src/psp_controls.cpp"
+)
+
+set(DUSKLIGHT_BUILD_COMMIT "unknown" CACHE STRING
+    "Git commit embedded in the PSP build identity")
+target_compile_definitions(dusklight_psp PRIVATE
+    DUSKLIGHT_BUILD_COMMIT="${DUSKLIGHT_BUILD_COMMIT}"
 )
 
 target_include_directories(dusklight_psp PRIVATE "${DUSK_PSP_ROOT}/include")

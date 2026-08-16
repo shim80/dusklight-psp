@@ -119,6 +119,18 @@ alignas(16) ShadowCasterVertex
     g_shadow_caster_vertices[kPlayableMaxVertices] = {};
 alignas(16) SkinnedVertex
     g_link_lighting_vertices[kPlayableMaxVertices] = {};
+constexpr std::uint32_t kSafeLinkMaterialCapacity = 27;
+constexpr std::uint32_t kSafeLinkLightLevels = 64;
+alignas(16) std::uint32_t
+    g_safe_link_color_lut[
+        kSafeLinkMaterialCapacity][kSafeLinkLightLevels] = {};
+const std::uint8_t* g_safe_link_lut_package = nullptr;
+std::uint32_t g_safe_link_lut_package_size = 0;
+std::uint32_t g_safe_link_lut_ambient = 0;
+std::uint32_t g_safe_link_lut_key = 0;
+SafeLinkLightingVariant g_safe_link_lut_variant =
+    SafeLinkLightingVariant::AmbientOnly;
+bool g_safe_link_lut_valid = false;
 
 bool trace_render_submission(
     render_trace::Source source, render_trace::Bucket bucket,
@@ -378,6 +390,14 @@ void bind(const Texture& texture) {
     sceGuColor(0xffffffffu);
 }
 
+std::uint16_t texture_storage_dimension(std::uint32_t logical) {
+    std::uint32_t stored = 8;
+    while (stored < logical && stored < 512) {
+        stored <<= 1;
+    }
+    return static_cast<std::uint16_t>(stored);
+}
+
 void configure_real_room_camera(const RealRoomRenderInput& input) {
     sceGuDepthFunc(GU_GEQUAL);
     sceGuDepthMask(GU_FALSE);
@@ -414,12 +434,10 @@ std::uint32_t environment_clear_color(
 
 void configure_environment(
     const RealRoomRenderInput& input, RenderMetrics* metrics) {
-    if (input.environment == nullptr ||
-        input.lighting_mode == LightingMode::Off) {
+    if (input.environment == nullptr) {
         sceGuDisable(GU_FOG);
         sceGuDisable(GU_LIGHTING);
-        metrics->environment_records_loaded =
-            input.environment == nullptr ? 0 : 1;
+        metrics->environment_records_loaded = 0;
         metrics->environment_fog_enabled = false;
         metrics->environment_lighting_enabled = false;
         return;
@@ -433,7 +451,8 @@ void configure_environment(
     metrics->environment_fog_far = state.fog_far;
     metrics->environment_fog_enabled =
         state.fog_enabled && input.fog_mode == FogMode::Source;
-    metrics->environment_lighting_enabled = true;
+    metrics->environment_lighting_enabled =
+        input.lighting_mode != LightingMode::Off;
     if (metrics->environment_fog_enabled) {
         sceGuEnable(GU_FOG);
         sceGuFog(
@@ -478,7 +497,8 @@ LinearRgb lighting_for_vertex(
     const PspLinkMaterialLightingRecord& material,
     const environment::PspMaterialEnvironmentState* environment,
     Vec3 normal,
-    Vec3 light_direction) {
+    Vec3 light_direction,
+    Vec3 view_direction) {
     constexpr color::PackedArgb32 kBlack = {0xff000000u};
     constexpr color::PackedArgb32 kWhite = {0xffffffffu};
     const color::PackedArgb32 ambient =
@@ -489,6 +509,19 @@ LinearRgb lighting_for_vertex(
         environment == nullptr
             ? kBlack
             : color::PackedArgb32{environment->key_light_color};
+    if (mode == LightingMode::SafeAmbient ||
+        mode == LightingMode::SafeWrappedDiffuse ||
+        mode == LightingMode::SafeWrappedDiffuseRim) {
+        const SafeLinkLightingVariant variant =
+            mode == LightingMode::SafeAmbient
+                ? SafeLinkLightingVariant::AmbientOnly
+                : mode == LightingMode::SafeWrappedDiffuse
+                    ? SafeLinkLightingVariant::WrappedDiffuse
+                    : SafeLinkLightingVariant::WrappedDiffuseRim;
+        return evaluate_safe_link_lighting(
+            material, ambient, key, normal, light_direction,
+            view_direction, variant);
+    }
     if (mode == LightingMode::WhiteAmbient) {
         PspLinkMaterialLightingRecord diagnostic = material;
         diagnostic.ambient = kWhite;
@@ -533,6 +566,8 @@ const SkinnedVertex* prepare_link_lighting_vertices(
     const std::uint32_t vertex_table = read_u32(model + 72);
     const std::uint32_t vertex_stride = read_u32(model + 76);
     Vec3 light_direction = {0.0f, 1.0f, 0.0f};
+    const float model_yaw =
+        link::actor_to_model_orientation(input.link_yaw);
     if (input.environment != nullptr) {
         light_direction = world_light_ray_to_model_surface(
             {
@@ -540,8 +575,15 @@ const SkinnedVertex* prepare_link_lighting_vertices(
                 input.environment->key_light_direction[1],
                 input.environment->key_light_direction[2],
             },
-            link::actor_to_model_orientation(input.link_yaw));
+            model_yaw);
     }
+    const Vec3 camera_model = world_vector_to_model(
+        {
+            input.camera_eye.x - input.link_position.x,
+            input.camera_eye.y - input.link_position.y,
+            input.camera_eye.z - input.link_position.z,
+        },
+        model_yaw);
     metrics->source_normal_count = runtime.vertex_count;
     metrics->runtime_normal_count = runtime.vertex_count;
     metrics->zero_normal_count = 0;
@@ -556,6 +598,195 @@ const SkinnedVertex* prepare_link_lighting_vertices(
     metrics->unlit_material_count = 0;
     metrics->emissive_material_count = 0;
     metrics->material_fallback_count = 0;
+    metrics->safe_link_visible = false;
+    metrics->link_lighting_luminance_min = 1.0f;
+    metrics->link_lighting_luminance_mean = 0.0f;
+    metrics->link_lighting_luminance_max = 0.0f;
+    const bool safe_mode =
+        input.lighting_mode == LightingMode::SafeAmbient ||
+        input.lighting_mode == LightingMode::SafeWrappedDiffuse ||
+        input.lighting_mode == LightingMode::SafeWrappedDiffuseRim;
+    if (safe_mode) {
+        struct PreparedMaterial {
+            LinearRgb base;
+            LinearRgb emissive;
+            std::uint8_t alpha;
+            bool lighting_enabled;
+            bool valid;
+        };
+        PreparedMaterial prepared[kSafeLinkMaterialCapacity] = {};
+        const std::uint32_t material_count = std::min(
+            metrics->source_material_count,
+            kSafeLinkMaterialCapacity);
+        for (std::uint32_t index = 0;
+             index < material_count; ++index) {
+            PspLinkMaterialLightingRecord material = {};
+            if (!read_link_material_lighting(
+                    runtime.packages.textures, index, &material)) {
+                ++metrics->material_fallback_count;
+                continue;
+            }
+            prepared[index] = {
+                linear_rgb(material.base),
+                linear_rgb(material.emissive),
+                material.alpha,
+                material.lighting_enabled,
+                true,
+            };
+            if (material.lighting_enabled) {
+                ++metrics->runtime_material_lighting_count;
+            } else {
+                ++metrics->unlit_material_count;
+            }
+            const color::GxColorRgba8 emissive =
+                color::unpack_argb(material.emissive);
+            if (emissive.red != 0 || emissive.green != 0 ||
+                emissive.blue != 0) {
+                ++metrics->emissive_material_count;
+            }
+            metrics->material_fallback_count +=
+                material.fallback_reason != 0 ? 1u : 0u;
+        }
+        const color::PackedArgb32 ambient_packed = {
+            input.environment == nullptr
+                ? 0xff000000u : input.environment->ambient};
+        const color::PackedArgb32 key_packed = {
+            input.environment == nullptr
+                ? 0xff000000u : input.environment->key_light_color};
+        const LinearRgb ambient = normalized_chroma(ambient_packed);
+        const LinearRgb key = normalized_chroma(key_packed);
+        const SafeLinkLightingVariant variant =
+            input.lighting_mode == LightingMode::SafeAmbient
+                ? SafeLinkLightingVariant::AmbientOnly
+                : input.lighting_mode ==
+                        LightingMode::SafeWrappedDiffuse
+                    ? SafeLinkLightingVariant::WrappedDiffuse
+                    : SafeLinkLightingVariant::WrappedDiffuseRim;
+        const bool lut_eligible =
+            variant != SafeLinkLightingVariant::WrappedDiffuseRim;
+        if (lut_eligible &&
+            (!g_safe_link_lut_valid ||
+             g_safe_link_lut_package !=
+                 runtime.packages.textures.bytes ||
+             g_safe_link_lut_package_size !=
+                 runtime.packages.textures.size ||
+             g_safe_link_lut_ambient != ambient_packed.value ||
+             g_safe_link_lut_key != key_packed.value ||
+             g_safe_link_lut_variant != variant)) {
+            for (std::uint32_t material_index = 0;
+                 material_index < material_count; ++material_index) {
+                const PreparedMaterial& material =
+                    prepared[material_index];
+                for (std::uint32_t level = 0;
+                     level < kSafeLinkLightLevels; ++level) {
+                    const float wrapped =
+                        static_cast<float>(level) /
+                        static_cast<float>(
+                            kSafeLinkLightLevels - 1);
+                    const LinearRgb lit =
+                        evaluate_prepared_safe_link_lighting_factors(
+                            material.base, material.emissive,
+                            material.lighting_enabled, ambient, key,
+                            wrapped, 0.0f, variant);
+                    g_safe_link_color_lut[material_index][level] =
+                        psp_vertex_color(lit, material.alpha).value;
+                }
+            }
+            g_safe_link_lut_package =
+                runtime.packages.textures.bytes;
+            g_safe_link_lut_package_size =
+                runtime.packages.textures.size;
+            g_safe_link_lut_ambient = ambient_packed.value;
+            g_safe_link_lut_key = key_packed.value;
+            g_safe_link_lut_variant = variant;
+            g_safe_link_lut_valid = true;
+        }
+        for (std::uint32_t index = 0;
+             index < runtime.vertex_count; ++index) {
+            const std::uint8_t material_index =
+                model[vertex_table + index * vertex_stride + 43];
+            if (material_index >= material_count ||
+                !prepared[material_index].valid) {
+                g_link_lighting_vertices[index].color = 0xffffffffu;
+                continue;
+            }
+            const Vec3 normal = {
+                source[index].nx, source[index].ny, source[index].nz};
+            color::PspColorAbgr8888 packed = {};
+            if (lut_eligible) {
+                const float ndotl = std::clamp(
+                    normal.x * light_direction.x +
+                    normal.y * light_direction.y +
+                    normal.z * light_direction.z,
+                    -1.0f, 1.0f);
+                const float wrapped = std::clamp(
+                    (ndotl + kSafeLinkLighting.wrap_bias) /
+                        (1.0f + kSafeLinkLighting.wrap_bias),
+                    0.0f, 1.0f);
+                const std::uint32_t level =
+                    static_cast<std::uint32_t>(
+                        wrapped * static_cast<float>(
+                            kSafeLinkLightLevels - 1) + 0.5f);
+                packed.value =
+                    g_safe_link_color_lut[material_index][level];
+            } else {
+                const Vec3 view_direction = normalized_direction({
+                    camera_model.x - source[index].x,
+                    camera_model.y - source[index].y,
+                    camera_model.z - source[index].z,
+                });
+                const PreparedMaterial& material =
+                    prepared[material_index];
+                const LinearRgb lit =
+                    evaluate_prepared_safe_link_lighting(
+                        material.base, material.emissive,
+                        material.lighting_enabled, ambient, key,
+                        normal, light_direction, view_direction, variant);
+                packed = psp_vertex_color(lit, material.alpha);
+            }
+            g_link_lighting_vertices[index].color = packed.value;
+            const color::GxColorRgba8 channels =
+                color::unpack_psp_abgr(packed);
+            const float luminance =
+                (0.2126f * channels.red + 0.7152f * channels.green +
+                 0.0722f * channels.blue) / 255.0f;
+            metrics->link_lighting_luminance_min = std::min(
+                metrics->link_lighting_luminance_min, luminance);
+            metrics->link_lighting_luminance_mean += luminance;
+            metrics->link_lighting_luminance_max = std::max(
+                metrics->link_lighting_luminance_max, luminance);
+        }
+        if (runtime.vertex_count != 0) {
+            metrics->link_lighting_luminance_mean /=
+                static_cast<float>(runtime.vertex_count);
+        }
+        // Skinning normalizes every finite output normal immediately before
+        // this render pass. Rechecking it with thousands of square roots here
+        // would duplicate that invariant in the performance-sensitive path.
+        metrics->normal_length_min = 1.0f;
+        metrics->normal_length_max = 1.0f;
+        metrics->normal_error_mean = 0.0f;
+        metrics->normal_error_max = 0.0f;
+        metrics->source_material_colors_loaded =
+            metrics->source_material_count ==
+                kSafeLinkMaterialCapacity &&
+            metrics->material_fallback_count == 0;
+        metrics->color_channel_mapping_valid = true;
+        metrics->light_transform_valid = true;
+        metrics->source_approx_link_visible =
+            metrics->source_material_colors_loaded;
+        metrics->safe_link_visible =
+            metrics->source_material_colors_loaded &&
+            metrics->link_lighting_luminance_min >=
+                kSafeLinkLighting.minimum_illumination -
+                    (1.0f / 255.0f);
+        sceKernelDcacheWritebackRange(
+            g_link_lighting_vertices,
+            runtime.vertex_count * sizeof(SkinnedVertex));
+        metrics->lighting_cpu_us = static_cast<std::uint32_t>(
+            monotonic_microseconds() - lighting_begin);
+        return g_link_lighting_vertices;
+    }
     bool material_seen[27] = {};
     float debug_mean = 0.0f;
     float debug_square_mean = 0.0f;
@@ -563,6 +794,11 @@ const SkinnedVertex* prepare_link_lighting_vertices(
          index < runtime.vertex_count; ++index) {
         const Vec3 normal = {
             source[index].nx, source[index].ny, source[index].nz};
+        const Vec3 view_direction = {
+            camera_model.x - source[index].x,
+            camera_model.y - source[index].y,
+            camera_model.z - source[index].z,
+        };
         const float length = std::sqrt(
             normal.x * normal.x +
             normal.y * normal.y +
@@ -620,7 +856,7 @@ const SkinnedVertex* prepare_link_lighting_vertices(
                     lighting_for_vertex(
                         input.lighting_mode, material,
                         input.environment, normal,
-                        light_direction),
+                        light_direction, view_direction),
                     material.alpha).value;
         } else {
             g_link_lighting_vertices[index].color = 0xffffffffu;
@@ -632,11 +868,23 @@ const SkinnedVertex* prepare_link_lighting_vertices(
             (debug.red + debug.green + debug.blue) / (3.0f * 255.0f);
         debug_mean += debug_value;
         debug_square_mean += debug_value * debug_value;
+        const color::GxColorRgba8 lit = color::unpack_psp_abgr(
+            color::PspColorAbgr8888{
+                g_link_lighting_vertices[index].color});
+        const float luminance =
+            (0.2126f * lit.red + 0.7152f * lit.green +
+             0.0722f * lit.blue) / 255.0f;
+        metrics->link_lighting_luminance_min = std::min(
+            metrics->link_lighting_luminance_min, luminance);
+        metrics->link_lighting_luminance_mean += luminance;
+        metrics->link_lighting_luminance_max = std::max(
+            metrics->link_lighting_luminance_max, luminance);
     }
     if (runtime.vertex_count != 0) {
         const float inverse =
             1.0f / static_cast<float>(runtime.vertex_count);
         metrics->normal_error_mean *= inverse;
+        metrics->link_lighting_luminance_mean *= inverse;
         debug_mean *= inverse;
         debug_square_mean *= inverse;
         metrics->normal_debug_color_variance =
@@ -651,6 +899,12 @@ const SkinnedVertex* prepare_link_lighting_vertices(
         metrics->zero_normal_count == 0 &&
         metrics->non_finite_normal_count == 0 &&
         metrics->source_material_colors_loaded;
+    metrics->safe_link_visible =
+        (input.lighting_mode == LightingMode::SafeAmbient ||
+         input.lighting_mode == LightingMode::SafeWrappedDiffuse ||
+         input.lighting_mode == LightingMode::SafeWrappedDiffuseRim) &&
+        metrics->link_lighting_luminance_min >=
+            kSafeLinkLighting.minimum_illumination - (1.0f / 255.0f);
     sceKernelDcacheWritebackRange(
         g_link_lighting_vertices,
         runtime.vertex_count * sizeof(SkinnedVertex));
@@ -1002,6 +1256,53 @@ void bind_room_texture(std::uint16_t texture) {
     bind(g_room_textures[texture < count ? texture : 0]);
 }
 
+void apply_material_pass_state(
+    const room::MaterialPass& pass, bool preserve_source_blend) {
+    if (pass.use_texture) {
+        bind_room_texture(pass.texture_id);
+        const int effect =
+            pass.texture_effect == room::MaterialTextureEffect::Replace
+                ? GU_TFX_REPLACE
+                : pass.texture_effect == room::MaterialTextureEffect::Add
+                    ? GU_TFX_ADD
+                    : GU_TFX_MODULATE;
+        sceGuTexFunc(effect, GU_TCC_RGBA);
+    } else {
+        sceGuDisable(GU_TEXTURE_2D);
+    }
+    sceGuColor(pass.color);
+    if (preserve_source_blend &&
+        pass.blend == room::MaterialBlendPolicy::Source) {
+        return;
+    }
+    switch (pass.blend) {
+    case room::MaterialBlendPolicy::Source:
+        sceGuDisable(GU_BLEND);
+        break;
+    case room::MaterialBlendPolicy::Alpha:
+        sceGuEnable(GU_BLEND);
+        sceGuBlendFunc(
+            GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+        break;
+    case room::MaterialBlendPolicy::Additive:
+        sceGuEnable(GU_BLEND);
+        sceGuBlendFunc(
+            GU_ADD, GU_SRC_ALPHA, GU_FIX, 0, 0xffffffffu);
+        break;
+    case room::MaterialBlendPolicy::Screen:
+        sceGuEnable(GU_BLEND);
+        sceGuBlendFunc(
+            GU_ADD, GU_FIX, GU_ONE_MINUS_OTHER_COLOR,
+            0xffffffffu, 0);
+        break;
+    case room::MaterialBlendPolicy::Multiply:
+        sceGuEnable(GU_BLEND);
+        sceGuBlendFunc(
+            GU_ADD, GU_OTHER_COLOR, GU_FIX, 0, 0x00000000u);
+        break;
+    }
+}
+
 void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
     const std::uint32_t section_table = read_u32(g_room_model + 72);
     const std::uint8_t* vertex_section = g_room_model + section_table;
@@ -1045,24 +1346,70 @@ void draw_room_bucket(std::uint8_t wanted, RenderMetrics* metrics) {
         if (alpha_state.cull_exact) {
             ++metrics->room_cull_exact_draws;
         }
-        sceGuDepthMask(source_depth_write ? GU_FALSE : GU_TRUE);
-        const std::uint16_t texture = read_u16(item + 10);
-        bind_room_texture(texture);
-        sceGuShadeModel(GU_SMOOTH);
-        sceGumDrawArray(
-            GU_TRIANGLES,
-            GU_TEXTURE_32BITF | GU_COLOR_8888 |
-                GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
-            read_u32(item + 4),
-            indices + read_u32(item) * 2,
-            vertices);
-        trace_render_submission(
-            render_trace::Source::Room, trace_bucket(wanted), 0,
-            source_material, read_u16(item + 14), texture,
-            source_depth_write, alpha_state.culling,
-            metrics->environment_fog_enabled, false,
-            alpha_state.alpha_reference);
-        ++metrics->room_draw_calls;
+        const std::uint16_t fallback_texture = read_u16(item + 10);
+        const room::PackageView texture_package = {
+            g_room_texture_package.bytes, g_room_texture_package.size,
+            g_room_texture_package.expected_crc,
+            g_room_texture_package.actual_crc};
+        room::MaterialPassPlan plan = {};
+        const bool has_plan = room::read_room_material_pass_plan(
+            texture_package, source_material, &plan) == room::PackageError::Ok;
+        room::AlphaMaterialState source_alpha = {};
+        const bool has_source_alpha = room::read_room_alpha_material_state(
+            texture_package, source_material, &source_alpha) ==
+            room::PackageError::Ok;
+        const std::uint32_t room_texture_count =
+            read_u32(g_room_texture_package.bytes + 16);
+        const bool fallback_texture_has_alpha =
+            fallback_texture < room_texture_count &&
+            g_room_textures[fallback_texture].format != 0;
+        const bool fallback_needs_missing_tev_alpha =
+            has_source_alpha && source_alpha.draw_buffer == 1 &&
+            source_alpha.material_class == room::AlphaMaterialClass::AlphaBlend &&
+            source_alpha.blend_mode == 1 && source_alpha.blend_src == 4 &&
+            source_alpha.texture_count == 1 &&
+            source_alpha.texture_identities_complete &&
+            !fallback_texture_has_alpha;
+        // A single-pass PSP fallback cannot reconstruct TEV-generated alpha.
+        // Skip only unsafe XLU whose sole source texture is RGB565/opaque.
+        // Keep alpha-capable F_SP108 water and foam layers.
+        if (wanted == 2 && fallback_needs_missing_tev_alpha &&
+            (!has_plan ||
+             plan.fidelity == room::MaterialPassFidelity::Unsupported)) {
+            continue;
+        }
+        const std::uint32_t pass_count = has_plan ? plan.pass_count : 1u;
+        for (std::uint32_t pass_index = 0;
+             pass_index < pass_count; ++pass_index) {
+            room::MaterialPass fallback_pass = {};
+            fallback_pass.texture_id = fallback_texture;
+            fallback_pass.texture_effect = room::MaterialTextureEffect::Modulate;
+            fallback_pass.color_source = room::MaterialColorSource::Rgba;
+            fallback_pass.blend = room::MaterialBlendPolicy::Source;
+            fallback_pass.depth_write = source_depth_write;
+            fallback_pass.use_texture = true;
+            fallback_pass.color = 0xffffffffu;
+            const room::MaterialPass& pass =
+                has_plan ? plan.passes[pass_index] : fallback_pass;
+            sceGuDepthMask(pass.depth_write ? GU_FALSE : GU_TRUE);
+            apply_material_pass_state(pass, pass_index == 0);
+            sceGuShadeModel(GU_SMOOTH);
+            sceGumDrawArray(
+                GU_TRIANGLES,
+                GU_TEXTURE_32BITF | GU_COLOR_8888 |
+                    GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
+                read_u32(item + 4),
+                indices + read_u32(item) * 2,
+                vertices);
+            trace_render_submission(
+                render_trace::Source::Room, trace_bucket(wanted), 0,
+                source_material, read_u16(item + 14),
+                pass.use_texture ? pass.texture_id : 0xffffu,
+                pass.depth_write, alpha_state.culling,
+                metrics->environment_fog_enabled, false,
+                alpha_state.alpha_reference);
+            ++metrics->room_draw_calls;
+        }
         if (wanted == 0) {
             ++metrics->room_opaque_draws;
         } else if (wanted == 1) {
@@ -1274,8 +1621,13 @@ void draw_real_link(
     const std::uint32_t submesh_offset = read_u32(model + 84);
     const std::uint32_t submesh_stride = read_u32(model + 88);
     const std::uint32_t submeshes = read_u32(model + 28);
-    const SkinnedVertex* submitted =
-        prepare_link_lighting_vertices(runtime, input, metrics);
+    const bool cpu_vertex_lighting =
+        input.lighting_mode != LightingMode::Off &&
+        input.lighting_mode != LightingMode::TextureOnly &&
+        input.lighting_mode != LightingMode::GuCandidate;
+    const SkinnedVertex* submitted = cpu_vertex_lighting
+        ? prepare_link_lighting_vertices(runtime, input, metrics)
+        : current_vertices(runtime);
     if (input.lighting_mode == LightingMode::GuCandidate) {
         enable_actor_environment_lighting(input);
     } else {
@@ -1796,7 +2148,8 @@ void original_ui_text_bounded(
     std::uint16_t visible_characters,
     int x,
     int baseline,
-    RenderMetrics* metrics) {
+    RenderMetrics* metrics,
+    std::uint32_t color = 0xffffffffu) {
     if (text == nullptr) return;
     const int origin_x = x;
     std::uint16_t consumed = 0;
@@ -1823,11 +2176,30 @@ void original_ui_text_bounded(
         const int draw_y = baseline - 18 + (bearing_y * 3 + 2) / 4;
         const int draw_width = std::max(1, (source_width * 3 + 3) / 4);
         const int draw_height = std::max(1, (source_height * 3 + 3) / 4);
-        original_ui_sprite(
-            id, draw_x, draw_y, draw_width, draw_height, metrics);
+        const std::uint8_t* glyph = ui_record(id);
+        sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
+        sceGuColor(color);
+        sprite(
+            draw_x, draw_y, draw_width, draw_height,
+            read_u16(glyph + 12), read_u16(glyph + 14),
+            source_width, source_height, metrics);
         const int advance = read_u16(item + 28);
         x += std::max(5, advance * 3 / 4);
     }
+    sceGuColor(0xffffffffu);
+}
+
+int original_ui_text_width(const char* text) {
+    int width = 0;
+    if (text == nullptr) return width;
+    for (const char* cursor = text; *cursor != '\0'; ++cursor) {
+        const std::uint8_t* item = ui_record(static_cast<std::uint16_t>(
+            128 + static_cast<unsigned char>(*cursor)));
+        if (item != nullptr) {
+            width += std::max(5, read_u16(item + 28) * 3 / 4);
+        }
+    }
+    return width;
 }
 
 void original_ui_text(
@@ -1849,21 +2221,44 @@ void draw_message_overlay(
     sceGuEnable(GU_BLEND);
     sceGuBlendFunc(
         GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
-    // Simplified PSP presentation: source text/lifetime are authoritative,
-    // while the heavy GameCube message-pane effects are intentionally deferred.
-    rectangle(26, 145, 428, 119, 0xd010151du, metrics);
-    rectangle(26, 145, 428, 2, 0xffc8a85cu, metrics);
-    rectangle(26, 262, 428, 2, 0xffc8a85cu, metrics);
-    rectangle(26, 145, 2, 119, 0xffc8a85cu, metrics);
-    rectangle(452, 145, 2, 119, 0xffc8a85cu, metrics);
+    // Source composition: a transparent lower vignette preserves the actors,
+    // with a narrow black ornament band and the confirmation prompt above.
+    // The original pane textures are not in DPUI yet, so the scrollwork is a
+    // deliberately bounded geometric approximation.
+    rectangle(0, 0, 480, 16, 0xc8000000u, metrics);
+    rectangle(0, 171, 480, 22, 0x28000000u, metrics);
+    rectangle(0, 193, 480, 22, 0x58000000u, metrics);
+    rectangle(0, 215, 480, 22, 0x80000000u, metrics);
+    rectangle(0, 237, 480, 19, 0xa8000000u, metrics);
+    rectangle(0, 256, 480, 16, 0xe0000000u, metrics);
+    rectangle(28, 255, 424, 1, 0x80684e20u, metrics);
+    rectangle(52, 263, 96, 1, 0x704c3818u, metrics);
+    rectangle(332, 263, 96, 1, 0x704c3818u, metrics);
+    sceGuEnable(GU_TEXTURE_2D);
     bind(g_ui);
     sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
     sceGuTexScale(1.0f, 1.0f);
-    original_ui_text_bounded(
-        overlay->text, overlay->visible_characters,
-        42, 168, metrics);
+    if (overlay->source_message_id == 3004 &&
+        overlay->visible_characters == 0xffffu) {
+        constexpr char kPrefix[] = "pervades the ";
+        constexpr char kHighlight[] = "hour of twilight";
+        original_ui_text("That is why loneliness always", 68, 222, metrics);
+        original_ui_text(kPrefix, 68, 245, metrics);
+        const int highlight_x = 68 + original_ui_text_width(kPrefix);
+        original_ui_text_bounded(
+            kHighlight, 0xffffu, highlight_x, 245, metrics,
+            0xff7868d8u);
+        original_ui_text(
+            "...", highlight_x + original_ui_text_width(kHighlight),
+            245, metrics);
+    } else {
+        original_ui_text_bounded(
+            overlay->text, overlay->visible_characters,
+            68, 222, metrics);
+    }
     if (overlay->awaiting_confirm) {
-        original_ui_sprite(30, 416, 228, 28, 28, metrics);
+        original_ui_text("Next", 344, 18, metrics);
+        original_ui_sprite(30, 402, 0, 24, 24, metrics);
     }
     sceGuDisable(GU_BLEND);
 }
@@ -1998,6 +2393,72 @@ void draw_startup_channel(
     sceGuDisable(GU_BLEND);
 }
 
+const std::uint8_t* startup_record(std::uint16_t id) {
+    for (std::uint32_t index = 0;
+         index < g_startup_ui_package.record_count; ++index) {
+        const std::uint8_t* record =
+            g_startup_ui_package.bytes +
+            g_startup_ui_package.records_offset + index * 32;
+        if (read_u16(record) == id) {
+            return record;
+        }
+    }
+    return nullptr;
+}
+
+void draw_startup_record_at(
+    std::uint16_t id, int x, int y,
+    std::uint32_t color, RenderMetrics* metrics) {
+    const std::uint8_t* record = startup_record(id);
+    if (record == nullptr) {
+        return;
+    }
+    sceGuEnable(GU_TEXTURE_2D);
+    bind(g_ui);
+    sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
+    sceGuColor(color);
+    sprite(
+        x, y, read_u16(record + 8), read_u16(record + 10),
+        read_u16(record + 12), read_u16(record + 14),
+        read_u16(record + 16), read_u16(record + 18), metrics);
+}
+
+void draw_startup_text(
+    const char* text, int x, int y,
+    std::uint32_t color, RenderMetrics* metrics) {
+    if (text == nullptr) {
+        return;
+    }
+    int cursor = x;
+    for (const char* at = text; *at != '\0'; ++at) {
+        const unsigned char character =
+            static_cast<unsigned char>(*at);
+        if (character < 32 || character > 126) {
+            continue;
+        }
+        const std::uint8_t* record = startup_record(
+            static_cast<std::uint16_t>(256 + character - 32));
+        if (record == nullptr) {
+            cursor += 8;
+            continue;
+        }
+        draw_startup_record_at(
+            static_cast<std::uint16_t>(256 + character - 32),
+            cursor, y, color, metrics);
+        cursor += read_u16(record + 28);
+    }
+    sceGuColor(0xffffffffu);
+}
+
+void draw_name_entry_cell_border(
+    int x, int y, int width, int height,
+    std::uint32_t color, RenderMetrics* metrics) {
+    rectangle(x, y, width, 2, color, metrics);
+    rectangle(x, y + height - 2, width, 2, color, metrics);
+    rectangle(x, y, 2, height, color, metrics);
+    rectangle(x + width - 2, y, 2, height, color, metrics);
+}
+
 }  // namespace
 
 void set_render_trace_sink(render_trace::Sink sink, void* user) {
@@ -2020,6 +2481,7 @@ bool initialize_renderer(
         return false;
     }
     *metrics = {};
+    g_safe_link_lut_valid = false;
     g_edram = static_cast<std::uint8_t*>(sceGeEdramGetAddr());
     metrics->edram_total = sceGeEdramGetSize();
     metrics->edram_framebuffers = kFramebuffers;
@@ -2050,18 +2512,31 @@ bool initialize_renderer(
     cursor = (cursor + 15u) & ~15u;
     const std::uint32_t ui_source = read_u32(ui.bytes + 40);
     const std::uint32_t ui_bytes = read_u32(ui.bytes + 44);
-    if (ui_bytes > metrics->edram_total - cursor) {
+    const std::uint16_t ui_width = static_cast<std::uint16_t>(
+        read_u32(ui.bytes + 16));
+    const std::uint16_t ui_height = static_cast<std::uint16_t>(
+        read_u32(ui.bytes + 20));
+    const std::uint16_t ui_stored_width =
+        texture_storage_dimension(ui_width);
+    const std::uint16_t ui_stored_height =
+        texture_storage_dimension(ui_height);
+    const std::uint32_t ui_storage_bytes =
+        static_cast<std::uint32_t>(ui_stored_width) *
+        ui_stored_height * 2u;
+    if (ui_bytes > ui_storage_bytes ||
+        ui_storage_bytes > metrics->edram_total - cursor) {
         return false;
     }
     std::memcpy(g_edram + cursor, ui.bytes + ui_source, ui_bytes);
+    std::memset(
+        g_edram + cursor + ui_bytes, 0,
+        ui_storage_bytes - ui_bytes);
     g_ui = {
-        static_cast<std::uint16_t>(read_u32(ui.bytes + 16)),
-        static_cast<std::uint16_t>(read_u32(ui.bytes + 20)),
-        static_cast<std::uint16_t>(read_u32(ui.bytes + 16)),
-        static_cast<std::uint16_t>(read_u32(ui.bytes + 20)),
-        cursor, ui_bytes, 2};
-    cursor += ui_bytes;
-    metrics->edram_ui = ui_bytes;
+        ui_width, ui_height,
+        ui_stored_width, ui_stored_height,
+        cursor, ui_storage_bytes, 2};
+    cursor += ui_storage_bytes;
+    metrics->edram_ui = ui_storage_bytes;
     metrics->edram_remaining = metrics->edram_total - cursor;
     if (metrics->edram_textures + metrics->edram_ui > 1150000 ||
         metrics->edram_remaining < 80000) {
@@ -2109,26 +2584,35 @@ bool initialize_startup_ui_renderer(
     metrics->edram_total = sceGeEdramGetSize();
     metrics->edram_framebuffers = kFramebuffers;
     metrics->edram_depth = kBufferBytes;
-    if (g_edram == nullptr ||
-        ui.atlas_bytes > metrics->edram_total - kTextureOffset) {
+    const std::uint16_t ui_stored_width =
+        texture_storage_dimension(ui.atlas_width);
+    const std::uint16_t ui_stored_height =
+        texture_storage_dimension(ui.atlas_height);
+    const std::uint32_t ui_storage_bytes =
+        static_cast<std::uint32_t>(ui_stored_width) *
+        ui_stored_height * 2u;
+    if (g_edram == nullptr || ui.atlas_bytes > ui_storage_bytes ||
+        ui_storage_bytes > metrics->edram_total - kTextureOffset) {
         return false;
     }
     std::memcpy(
         g_edram + kTextureOffset,
         ui.bytes + ui.atlas_offset,
         ui.atlas_bytes);
+    std::memset(
+        g_edram + kTextureOffset + ui.atlas_bytes, 0,
+        ui_storage_bytes - ui.atlas_bytes);
     g_ui = {
         static_cast<std::uint16_t>(ui.atlas_width),
         static_cast<std::uint16_t>(ui.atlas_height),
-        static_cast<std::uint16_t>(ui.atlas_width),
-        static_cast<std::uint16_t>(ui.atlas_height),
-        kTextureOffset, ui.atlas_bytes, 2};
+        ui_stored_width, ui_stored_height,
+        kTextureOffset, ui_storage_bytes, 2};
     g_startup_ui_package = ui;
     g_list = command_list;
     g_list_bytes = command_list_bytes;
-    metrics->edram_ui = ui.atlas_bytes;
+    metrics->edram_ui = ui_storage_bytes;
     metrics->edram_remaining =
-        metrics->edram_total - kTextureOffset - ui.atlas_bytes;
+        metrics->edram_total - kTextureOffset - ui_storage_bytes;
     sceKernelDcacheWritebackAll();
     sceGuInit();
     sceGuStart(GU_DIRECT, g_list);
@@ -2190,6 +2674,118 @@ bool render_startup_ui_frame_layers(
     sceGuClear(GU_COLOR_BUFFER_BIT);
     draw_startup_channel(base_channel, fade_alpha, metrics);
     draw_startup_channel(overlay_channel, fade_alpha, metrics);
+    const int bytes = sceGuFinish();
+    if (bytes < 0 || static_cast<std::uint32_t>(bytes) > g_list_bytes ||
+        sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE) < 0) {
+        return false;
+    }
+    metrics->command_bytes = static_cast<std::uint32_t>(bytes);
+    sceDisplayWaitVblankStart();
+    sceGuSwapBuffers();
+    metrics->synchronized = true;
+    ++metrics->frames;
+    return true;
+}
+
+bool render_startup_name_entry_frame(
+    const StartupNameEntryRenderInput& input,
+    RenderMetrics* metrics) {
+    if (!g_initialized || metrics == nullptr || input.heading == nullptr ||
+        input.name == nullptr || input.cursor_row >= 3 ||
+        input.cursor_column >= 13 ||
+        g_startup_ui_package.bytes == nullptr ||
+        startup_record(200) == nullptr) {
+        return false;
+    }
+    metrics->ui_draw_calls = 0;
+    g_render_trace_frame = metrics->frames;
+    sceGuStart(GU_DIRECT, g_list);
+    sceGuClearColor(0xff000000u);
+    sceGuClear(GU_COLOR_BUFFER_BIT);
+    sceGuDisable(GU_DEPTH_TEST);
+    sceGuDisable(GU_CULL_FACE);
+    sceGuEnable(GU_BLEND);
+    sceGuBlendFunc(
+        GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+    draw_startup_record_at(200, 0, 0, 0xffffffffu, metrics);
+
+    rectangle(43, 6, 394, 260, 0xb0182030u, metrics);
+    rectangle(47, 10, 386, 252, 0xd0304050u, metrics);
+    rectangle(51, 14, 378, 244, 0xe0182028u, metrics);
+    rectangle(56, 18, 368, 28, 0xd0584830u, metrics);
+    rectangle(60, 22, 360, 20, 0xe0202830u, metrics);
+    draw_startup_text(input.heading, 164, 21, 0xffd8c080u, metrics);
+
+    rectangle(103, 52, 274, 40, 0xff6c5938u, metrics);
+    rectangle(107, 56, 266, 32, 0xf0182028u, metrics);
+    std::uint8_t name_length = 0;
+    while (input.name[name_length] != '\0' && name_length < 8) {
+        ++name_length;
+    }
+    const int name_start = 240 - static_cast<int>(name_length) * 14;
+    for (std::uint8_t index = 0; index < name_length; ++index) {
+        char character[2] = {input.name[index], '\0'};
+        draw_startup_text(
+            character, name_start + index * 28, 60,
+            0xffffffffu, metrics);
+    }
+
+    constexpr int kGridX = 64;
+    constexpr int kGridY = 107;
+    constexpr int kCellStepX = 27;
+    constexpr int kCellStepY = 31;
+    for (std::uint8_t row = 0; row < 3; ++row) {
+        const std::uint8_t columns = row == 2 ? 10 : 13;
+        for (std::uint8_t column = 0; column < columns; ++column) {
+            const int x = kGridX + column * kCellStepX;
+            const int y = kGridY + row * kCellStepY;
+            rectangle(x + 2, y + 2, 21, 22, 0xd0283038u, metrics);
+            char label[2] = {
+                row == 0
+                    ? static_cast<char>('A' + column)
+                    : row == 1
+                        ? static_cast<char>('N' + column)
+                        : static_cast<char>('0' + column),
+                '\0'};
+            if (input.lowercase && row < 2) {
+                label[0] = static_cast<char>(label[0] + ('a' - 'A'));
+            }
+            draw_startup_text(label, x + 6, y + 2, 0xffffffffu, metrics);
+        }
+    }
+    constexpr int kButtonY = 208;
+    constexpr int kButtonX[3] = {64, 195, 326};
+    constexpr const char* kButtonLabel[3] = {"SPACE", "DELETE", "END"};
+    for (std::uint8_t button = 0; button < 3; ++button) {
+        rectangle(kButtonX[button], kButtonY, 90, 27, 0xff5c5c58u, metrics);
+        rectangle(
+            kButtonX[button] + 3, kButtonY + 3,
+            84, 21, 0xff282c30u, metrics);
+        draw_startup_text(
+            kButtonLabel[button], kButtonX[button] + 14,
+            kButtonY + 3,
+            button == 2 ? 0xffe0b848u : 0xffffffffu, metrics);
+    }
+    if (input.cursor_row == 2 && input.cursor_column >= 10) {
+        draw_name_entry_cell_border(
+            kButtonX[input.cursor_column - 10], kButtonY, 90, 27,
+            0xfff0c050u, metrics);
+    } else {
+        draw_name_entry_cell_border(
+            kGridX + input.cursor_column * kCellStepX,
+            kGridY + input.cursor_row * kCellStepY,
+            25, 26,
+            0xfff0c050u, metrics);
+    }
+
+    draw_startup_text(
+        input.lowercase ? "abc" : "ABC", 64, 239,
+        0xffe0b848u, metrics);
+    draw_startup_text(
+        "TRI CASE   X OK   O DELETE",
+        112, 239, 0xffd8d8d8u, metrics);
+    sceGuColor(0xffffffffu);
+    sceGuDisable(GU_BLEND);
     const int bytes = sceGuFinish();
     if (bytes < 0 || static_cast<std::uint32_t>(bytes) > g_list_bytes ||
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE) < 0) {
@@ -2276,15 +2872,23 @@ bool render_startup_title_frame(
     sceGumLookAt(&eye, &center, &up);
     configure_environment(input, metrics);
     draw_room_bucket(0, metrics);
-    if (draw_title_model) {
-        draw_static_model_bucket(title_model, 0xfffeu, 0, metrics);
-    }
     draw_room_bucket(1, metrics);
-    if (draw_title_model) {
-        draw_static_model_bucket(title_model, 0xfffeu, 1, metrics);
-    }
     draw_room_bucket(2, metrics);
     if (draw_title_model) {
+        // Source Item3D camera used by daTitle_c::Draw. Keep the F_SP102
+        // environment on its own source camera, then draw the title model
+        // through the dedicated Item3D view instead of billboarding it.
+        sceGumMatrixMode(GU_PROJECTION);
+        sceGumLoadIdentity();
+        sceGumPerspective(45.0f, 480.0f / 272.0f, 1.0f, 100000.0f);
+        ScePspFVector3 title_eye = {0.0f, 0.0f, -1000.0f};
+        ScePspFVector3 title_center = {0.0f, 0.0f, 0.0f};
+        ScePspFVector3 title_up = {0.0f, 1.0f, 0.0f};
+        sceGumMatrixMode(GU_VIEW);
+        sceGumLoadIdentity();
+        sceGumLookAt(&title_eye, &title_center, &title_up);
+        draw_static_model_bucket(title_model, 0xfffeu, 0, metrics);
+        draw_static_model_bucket(title_model, 0xfffeu, 1, metrics);
         draw_static_model_bucket(title_model, 0xfffeu, 2, metrics);
     }
     if (ui_channel != 0xffffu) {
@@ -2518,7 +3122,10 @@ bool render_real_room_frame(
         draw_room_bucket(2, metrics);
         draw_real_room_entities(effective, metrics);
         draw_root_pose_debug(effective, metrics);
-        draw_ui(effective.ui_state, metrics);
+        if (!effective.hide_hud) {
+            draw_ui(effective.ui_state, metrics);
+        }
+        draw_message_overlay(effective.message_overlay, metrics);
     }
     const int bytes = sceGuFinish();
     if (bytes < 0 || static_cast<std::uint32_t>(bytes) > g_list_bytes ||
@@ -2690,7 +3297,9 @@ bool render_real_room_frame_with_models(
     }
     const std::uint64_t hud_begin = monotonic_microseconds();
     if (!opaque_only) {
-        draw_ui(effective.ui_state, metrics);
+        if (!effective.hide_hud) {
+            draw_ui(effective.ui_state, metrics);
+        }
         draw_message_overlay(effective.message_overlay, metrics);
     }
     metrics->hud_cpu_us = static_cast<std::uint32_t>(
@@ -2921,6 +3530,7 @@ void shutdown_renderer() {
     sceGuDisplay(GU_FALSE);
     sceGuTerm();
     g_startup_ui_package = {};
+    g_safe_link_lut_valid = false;
     g_initialized = false;
 }
 

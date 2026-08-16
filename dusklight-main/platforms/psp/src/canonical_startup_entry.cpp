@@ -8,6 +8,7 @@
 #include "dusk/psp/room_package.hpp"
 #include "dusk/psp/startup_camera.hpp"
 #include "dusk/psp/startup_runtime.hpp"
+#include "dusk/psp/startup_route_capture.hpp"
 
 #include <pspctrl.h>
 
@@ -26,6 +27,7 @@ constexpr std::uint32_t kStartupCapabilities =
     startup::Capability::Gameplay;
 constexpr std::uint32_t kStartupFrameDelayMicroseconds = 16667;
 constexpr std::uint32_t kTitleLogoFrames = 300;
+constexpr std::uint32_t kTitleCameraFinalSourceFrame = 1800;
 constexpr std::uint16_t kNoUiChannel = 0xffffu;
 constexpr std::uint16_t kTitlePromptChannel = 8;
 constexpr std::uint32_t kTitleLogoClip = 7;
@@ -193,65 +195,19 @@ bool apply_title_logo_animation(
     return true;
 }
 
-playable::Vec3 subtract(playable::Vec3 a, playable::Vec3 b) {
-    return {a.x - b.x, a.y - b.y, a.z - b.z};
-}
-
-playable::Vec3 add(playable::Vec3 a, playable::Vec3 b) {
-    return {a.x + b.x, a.y + b.y, a.z + b.z};
-}
-
-playable::Vec3 multiply(playable::Vec3 value, float scale) {
-    return {value.x * scale, value.y * scale, value.z * scale};
-}
-
-float dot(playable::Vec3 a, playable::Vec3 b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-playable::Vec3 cross(playable::Vec3 a, playable::Vec3 b) {
-    return {
-        a.y * b.z - a.z * b.y,
-        a.z * b.x - a.x * b.z,
-        a.x * b.y - a.y * b.x};
-}
-
-playable::Vec3 normalized(playable::Vec3 value) {
-    const float length = std::sqrt(dot(value, value));
-    if (!std::isfinite(length) || length < 0.00001f) {
-        return {0.0f, 0.0f, 1.0f};
-    }
-    return multiply(value, 1.0f / length);
-}
-
 playable::StaticModelRenderView make_title_model(
-    const CanonicalStartupPackages& packages,
-    const playable::StartupTitleCamera& camera) {
+    const CanonicalStartupPackages& packages) {
     playable::StaticModelRenderView model = {};
     model.model = packages.title_logo_model.bytes;
     model.model_size = packages.title_logo_model.size;
     model.textures = packages.title_logo_textures.bytes;
     model.texture_size = packages.title_logo_textures.size;
-
-    const playable::Vec3 forward = normalized(
-        subtract(camera.center, camera.eye));
-    const playable::Vec3 right = normalized(cross(forward, camera.up));
-    const playable::Vec3 up = normalized(cross(right, forward));
-    const playable::Vec3 position =
-        add(camera.eye, multiply(forward, 3000.0f));
-    model.matrix[0] = right.x;
-    model.matrix[1] = up.x;
-    model.matrix[2] = -forward.x;
-    model.matrix[3] = position.x;
-    model.matrix[4] = right.y;
-    model.matrix[5] = up.y;
-    model.matrix[6] = -forward.y;
-    model.matrix[7] = position.y;
-    model.matrix[8] = right.z;
-    model.matrix[9] = up.z;
-    model.matrix[10] = -forward.z;
-    model.matrix[11] = position.z;
-    model.scale[0] = 1.0f;
+    // daTitle_c::Draw uses translation (0, 0, -430) and mirrors X.
+    model.matrix[0] = 1.0f;
+    model.matrix[5] = 1.0f;
+    model.matrix[10] = 1.0f;
+    model.matrix[11] = -430.0f;
+    model.scale[0] = -1.0f;
     model.scale[1] = 1.0f;
     model.scale[2] = 1.0f;
     return model;
@@ -282,17 +238,8 @@ bool render_logo_segment(
     playable::RenderMetrics* metrics) {
     std::uint16_t channel = 0;
     switch (segment) {
-    case startup::Segment::BootWarning:
+    case startup::Segment::TeamLogo:
         channel = 0;
-        break;
-    case startup::Segment::ProgressivePrompt:
-        channel = 3;
-        break;
-    case startup::Segment::NintendoLogo:
-        channel = 1;
-        break;
-    case startup::Segment::DolbyLogo:
-        channel = 2;
         break;
     default:
         return false;
@@ -320,14 +267,6 @@ int run_canonical_startup_then_game() {
         shutdown();
         return 21;
     }
-    const std::uint32_t opening_display_frames =
-        playable::startup_title_camera_display_frames(packages.title_camera.view);
-    if (opening_display_frames == 0) {
-        unload_canonical_startup_packages(&packages);
-        shutdown();
-        return 22;
-    }
-
     TitleLogoGeometry title_geometry = {};
     if (!initialize_title_logo_geometry(packages, &title_geometry)) {
         unload_canonical_startup_packages(&packages);
@@ -365,6 +304,11 @@ int run_canonical_startup_then_game() {
     std::uint32_t title_frame = 0;
     std::uint32_t previous_buttons = 0;
     bool reached_title_prompt = false;
+    const bool capture_route = startup_route_capture_enabled();
+    bool captured_team_logo = false;
+    bool captured_title_scene = false;
+    bool captured_title_logo = false;
+    bool captured_title_prompt = false;
 
     for (;;) {
         SceCtrlData pad = {};
@@ -412,10 +356,7 @@ int run_canonical_startup_then_game() {
         const std::uint32_t segment_frame =
             startup_runtime.metrics().segment_frame;
         bool render_ok = true;
-        if (segment == startup::Segment::BootWarning ||
-            segment == startup::Segment::NintendoLogo ||
-            segment == startup::Segment::DolbyLogo ||
-            segment == startup::Segment::ProgressivePrompt) {
+        if (segment == startup::Segment::TeamLogo) {
             render_ok = render_logo_segment(
                 segment,
                 record.duration_frames != 0
@@ -425,17 +366,13 @@ int run_canonical_startup_then_game() {
         } else if (segment == startup::Segment::OpeningLoad) {
             render_ok = playable::render_black_transition_frame(&render_metrics);
         } else if (segment == startup::Segment::OpeningRealtime) {
-            playable::StartupTitleCamera camera = {};
-            if (!playable::startup_title_camera_from_track(
-                    packages.title_camera.view, opening_frame, &camera)) {
-                render_ok = false;
-            } else {
-                const playable::StaticModelRenderView title_model =
-                    make_title_model(packages, camera);
-                render_ok = playable::render_startup_title_frame(
-                    title_model, camera, false,
-                    kNoUiChannel, 255, &render_metrics);
-            }
+            const playable::StartupTitleCamera camera =
+                playable::startup_title_camera_from_source(opening_frame / 2u);
+            const playable::StaticModelRenderView title_model =
+                make_title_model(packages);
+            render_ok = playable::render_startup_title_frame(
+                title_model, camera, false,
+                kNoUiChannel, 255, &render_metrics);
             ++opening_frame;
         } else if (segment == startup::Segment::TitleLogo ||
                    segment == startup::Segment::TitlePrompt) {
@@ -443,24 +380,20 @@ int run_canonical_startup_then_game() {
                     &packages, title_geometry, &title_animation)) {
                 render_ok = false;
             } else {
-                playable::StartupTitleCamera camera = {};
-                if (!playable::startup_title_camera_from_track(
-                        packages.title_camera.view,
-                        opening_display_frames, &camera)) {
-                    render_ok = false;
-                } else {
-                    const playable::StaticModelRenderView title_model =
-                        make_title_model(packages, camera);
-                    render_ok = playable::render_startup_title_frame(
-                        title_model, camera, true,
-                        segment == startup::Segment::TitlePrompt
-                            ? kTitlePromptChannel
-                            : kNoUiChannel,
-                        segment == startup::Segment::TitlePrompt
-                            ? title_prompt_alpha(segment_frame)
-                            : 255,
-                        &render_metrics);
-                }
+                const playable::StartupTitleCamera camera =
+                    playable::startup_title_camera_from_source(
+                        kTitleCameraFinalSourceFrame);
+                const playable::StaticModelRenderView title_model =
+                    make_title_model(packages);
+                render_ok = playable::render_startup_title_frame(
+                    title_model, camera, true,
+                    segment == startup::Segment::TitlePrompt
+                        ? kTitlePromptChannel
+                        : kNoUiChannel,
+                    segment == startup::Segment::TitlePrompt
+                        ? title_prompt_alpha(segment_frame)
+                        : 255,
+                    &render_metrics);
             }
             if (segment == startup::Segment::TitleLogo) {
                 title_animation.play();
@@ -479,9 +412,33 @@ int run_canonical_startup_then_game() {
             return 29;
         }
 
+        if (capture_route) {
+            if (segment == startup::Segment::TeamLogo &&
+                segment_frame >= 75 && !captured_team_logo) {
+                captured_team_logo = capture_startup_route_frame(
+                    "startup-team-logo.5650");
+            } else if (segment == startup::Segment::TitleLogo &&
+                       title_frame >= 2 && !captured_title_scene) {
+                captured_title_scene = capture_startup_route_frame(
+                    "startup-fsp102-scene.5650");
+            } else if (segment == startup::Segment::TitleLogo &&
+                       title_frame >= 180 && !captured_title_logo) {
+                captured_title_logo = capture_startup_route_frame(
+                    "startup-title-logo.5650");
+            } else if (segment == startup::Segment::TitlePrompt &&
+                       segment_frame >= 30 && !captured_title_prompt) {
+                captured_title_prompt = capture_startup_route_frame(
+                    "startup-title-prompt.5650");
+            }
+        }
+
         startup::Input input = {};
         if (segment == startup::Segment::TitlePrompt) {
-            input.start = start_pressed;
+            input.start = start_pressed ||
+                (capture_route && captured_team_logo &&
+                 captured_title_scene && captured_title_logo &&
+                 captured_title_prompt &&
+                 segment_frame >= 45);
         } else {
             input.start = start_pressed;
             input.confirm = cross_pressed;
@@ -489,7 +446,7 @@ int run_canonical_startup_then_game() {
         const bool resources_ready = segment == startup::Segment::OpeningLoad;
         const bool source_event_complete =
             (segment == startup::Segment::OpeningRealtime &&
-             opening_frame >= opening_display_frames) ||
+             opening_frame >= kTitleCameraFinalSourceFrame * 2u) ||
             (segment == startup::Segment::TitleLogo &&
              title_frame >= kTitleLogoFrames);
         if (!startup_runtime.tick(
@@ -512,8 +469,8 @@ int run_canonical_startup_then_game() {
 
     log(
         "DUSKLIGHT_PSP_STARTUP_TITLE_OK "
-        "logos=source opening=F_SP102/DPCM2400@30fps/4800display "
-        "title_logo=DPAN7/300 prompt=source_dpsu start_gate=1");
+        "pretitle=dusklight_team_logo opening=skipped "
+        "title=F_SP102/item3d/DPAN7 prompt=source_dpsu start_gate=1");
     playable::shutdown_renderer();
     unload_canonical_startup_packages(&packages);
     shutdown();

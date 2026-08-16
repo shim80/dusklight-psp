@@ -9,6 +9,10 @@
 /logs/
 /artifacts/
 
+# Python-generated cache
+__pycache__/
+*.py[cod]
+
 # Commercial game images
 *.iso
 *.gcm

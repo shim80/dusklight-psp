@@ -22,7 +22,11 @@ struct CanonicalStartupAssets {
     const char* title_logo_model;
     const char* title_logo_textures;
     const char* title_logo_animation;
-    const char* title_camera;
+    const char* demo01_rusl_wide_model;
+    const char* demo01_rusl_closeup_model;
+    const char* demo01_rusl_textures;
+    const char* demo01_link_wide_animation;
+    const char* demo01_link_closeup_animation;
 };
 
 struct CanonicalRoomAssets {

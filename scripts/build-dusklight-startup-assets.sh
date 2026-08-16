@@ -16,14 +16,8 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 "$SCRIPT_DIR/verify-link-loader-sources.sh"
 "$SCRIPT_DIR/build-link-loader-probe.sh"
 
-BUILDER_BUILD="$(assert_project_path "build/host/startup-builder")"
-safe_mkdir "$BUILDER_BUILD"
-cmake -S "$PROJECT_ROOT/tools/dusk_startup_builder" \
-  -B "$BUILDER_BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build "$BUILDER_BUILD"
+PROBE="$(assert_project_path "build/host/link-loader/probe/dusk_link_loader_probe")"
 
-PROBE="$PROJECT_ROOT/build/host/link-loader/probe/dusk_link_loader_probe"
-BUILDER="$BUILDER_BUILD/dusk_startup_builder"
 OUTPUT="$(assert_project_path "build/assets/dusklight-startup")"
 PASS1="$(assert_project_path "build/assets/dusklight-startup-pass1")"
 PASS2="$(assert_project_path "build/assets/dusklight-startup-pass2")"
@@ -94,6 +88,22 @@ convert_pass() {
     NO_PROXY= \
     "$PROBE" >"$destination/startup_ui.export.log"
   fi
+  python3 "$PROJECT_ROOT/tools/startup_logo_ui_export.py"     "$destination/startup_logos.dpsu"     >"$destination/team_logo.export.log"
+  env \
+    DUSKLIGHT_GAME_IMAGE="$DUSKLIGHT_GAME_IMAGE" \
+    DUSKLIGHT_DEMO01_STARTUP_EXPORT=1 \
+    DUSKLIGHT_ROOM_TEXTURE_MAX=128 \
+    DUSKLIGHT_ROOM_SOURCE_TEXTURE_MAX=2048 \
+    DUSKLIGHT_DEMO01_RUSL_WIDE_DPRM_OUTPUT="$destination/demo01_rusl_wide.dprm" \
+    DUSKLIGHT_DEMO01_RUSL_CLOSEUP_DPRM_OUTPUT="$destination/demo01_rusl_closeup.dprm" \
+    DUSKLIGHT_DEMO01_RUSL_DPTX_OUTPUT="$destination/demo01_rusl.dptx" \
+    DUSKLIGHT_DEMO01_LINK_WIDE_DPAN_OUTPUT="$destination/demo01_link_wide.dpan" \
+    DUSKLIGHT_DEMO01_LINK_CLOSEUP_DPAN_OUTPUT="$destination/demo01_link_closeup.dpan" \
+    http_proxy=http://127.0.0.1:9 \
+    https_proxy=http://127.0.0.1:9 \
+    ALL_PROXY=http://127.0.0.1:9 \
+    NO_PROXY= \
+    "$PROBE" >"$destination/demo01_actors.export.log"
   env \
     DUSKLIGHT_GAME_IMAGE="$DUSKLIGHT_GAME_IMAGE" \
     DUSKLIGHT_FILE_SELECT_UI_EXPORT=1 \
@@ -121,8 +131,7 @@ convert_pass() {
     ALL_PROXY=http://127.0.0.1:9 \
     NO_PROXY= \
     "$PROBE" >"$destination/fsp108.export.log"
-  "$BUILDER" "$destination/startup.dpst" \
-    >"$destination/startup.export.log"
+  python3 "$PROJECT_ROOT/tools/startup_sequence_export.py"     "$destination/startup.dpst"     >"$destination/startup.export.log"
 }
 
 convert_pass "$PASS1"
@@ -134,6 +143,8 @@ FILES=(
   startup_logos.dpsu title_ui.dpsu file_select.dpsu
   fsp108_room.dprm fsp108_room.dptx
   fsp108_room.dpcl fsp108_room.dpsc
+  demo01_rusl_wide.dprm demo01_rusl_closeup.dprm
+  demo01_rusl.dptx demo01_link_wide.dpan demo01_link_closeup.dpan
   startup.dpst
 )
 for file in "${FILES[@]}"; do
@@ -157,11 +168,18 @@ done
     "deterministic=true" \
     "title_material_animation_status=unsupported_ids_13_16_19" \
     "startup_ui_status=converted_dpsu1" \
-    "startup_warning_source=/res/Layout/LogoPalFr.arc" \
-    "startup_title_message=Appuyez sur START" \
+    "startup_pretitle=dusklight_team_logo_original"     "startup_removed=warning,nintendo,dolby,progressive,opening_realtime"     "startup_title_message=Appuyez sur START" \
     "first_playable_stage=F_SP108" \
     "first_playable_room=1" \
     "first_playable_start=21" \
+    "intro_source_archive=/res/Object/Demo01_01.arc" \
+    "intro_rusl_model_id=47" \
+    "intro_rusl_bck_ids=18,19" \
+    "intro_link_bck_ids=3,4" \
+    "intro_wide_source_frame=270" \
+    "intro_wide_looped_sample_frame=30" \
+    "intro_closeup_source_frame=482" \
+    "intro_closeup_local_sample_frame=92" \
     "first_playable_actor_policy=source_observed_first_frame_lifecycle_adapters"
   for file in "${FILES[@]}"; do
     printf '%s_size=%s\n' "$file" "$(stat -f %z "$OUTPUT/$file")"
@@ -169,6 +187,11 @@ done
   done
 } >"$OUTPUT/STARTUP.MANIFEST"
 
+if [ ! -f "$PROJECT_ROOT/build/host/canonical-runtime/build.ninja" ]; then
+  cmake -S "$PROJECT_ROOT/test/canonical-runtime" \
+    -B "$PROJECT_ROOT/build/host/canonical-runtime" \
+    -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+fi
 cmake --build "$PROJECT_ROOT/build/host/canonical-runtime" \
   --target startup_ui_host_test
 "$PROJECT_ROOT/build/host/canonical-runtime/startup_ui_host_test" \

@@ -92,7 +92,7 @@ def export_model(bmd_path,out):
       if ti is not None and ti not in source_tex: source_tex[ti]=add(b.tex1.textures[ti].render())
     attrs=b.vtx1.attributes; vertices=[]; indices=[]; subs=[]; vmap={}; bounds=[float('inf')]*3+[-float('inf')]*3
     for si,shape in enumerate(b.shp1.shapes):
-      mi=mapping[si]; m=b.mat3.materials[mi]; ti=next((x for x in m.textures if x is not None),None); tex=source_tex.get(ti,white); bucket=mat_class(m); first=len(indices)
+      mi=mapping[si]; m=b.mat3.materials[mi]; ti=next((x for x in m.textures if x is not None),None); tex=source_tex.get(ti,white); bucket=2; first=len(indices)
       for st in strips(b.shp1,shape):
        ids=[]
        for d in st:
@@ -128,7 +128,7 @@ def export_model(bmd_path,out):
     for tid,p in enumerate(textures):
       w,h,sw,sh,fmt,data=p;struct.pack_into('<IHHHHB',t,tt+tid*48,tid,w,h,sw,sh,fmt);struct.pack_into('<II',t,tt+tid*48+16,po,len(data));t[po:po+len(data)]=data;po+=len(data)
     for gid,m in enumerate(mats):
-      ids=[x for x in m.textures if x is not None]; primary=source_tex.get(ids[0],white) if ids else white; klass=mat_class(m); struct.pack_into('<HBB',t,mt+gid*32,primary,klass,0); col=m.material_colors[0]; rgba=(col.r,col.g,col.b,col.a) if col else (255,255,255,255);struct.pack_into('<I',t,mt+gid*32+4,c32(rgba));ac=m.alpha_compare;z=m.z_mode;bl=m.blend_mode;off=st+gid*40;struct.pack_into('<H',t,off,gid);t[off+2]=klass;t[off+3]=0 if klass==0 else 1;t[off+4]=int(z.depth_test);t[off+5]=z.depth_func.value;t[off+6]=int(z.depth_write);t[off+7]=m.cull_mode.value;t[off+8]=ac.comp0.value;t[off+9]=ac.ref0;t[off+10]=ac.operation.value;t[off+11]=ac.comp1.value;t[off+12]=ac.ref1;t[off+13]=bl.mode.value;t[off+14]=bl.source_factor.value;t[off+15]=bl.destination_factor.value;t[off+16]=bl.logic_op.value;t[off+17]=1;t[off+18]=0;t[off+19]=1;struct.pack_into('<H',t,off+20,primary)
+      ids=[x for x in m.textures if x is not None]; primary=source_tex.get(ids[0],white) if ids else white; klass=2; struct.pack_into('<HBB',t,mt+gid*32,primary,klass,0); col=m.material_colors[0]; rgba=(col.r,col.g,col.b,col.a) if col else (255,255,255,255);struct.pack_into('<I',t,mt+gid*32+4,c32(rgba));ac=m.alpha_compare;z=m.z_mode;bl=m.blend_mode;off=st+gid*40;struct.pack_into('<H',t,off,gid);t[off+2]=klass;t[off+3]=0 if klass==0 else 1;t[off+4]=int(z.depth_test);t[off+5]=z.depth_func.value;t[off+6]=int(z.depth_write);t[off+7]=m.cull_mode.value;t[off+8]=ac.comp0.value;t[off+9]=ac.ref0;t[off+10]=ac.operation.value;t[off+11]=ac.comp1.value;t[off+12]=ac.ref1;t[off+13]=bl.mode.value;t[off+14]=bl.source_factor.value;t[off+15]=bl.destination_factor.value;t[off+16]=bl.logic_op.value;t[off+17]=1;t[off+18]=0;t[off+19]=1;struct.pack_into('<H',t,off+20,primary)
       for j in range(1,8):struct.pack_into('<H',t,off+20+j*2,0xffff)
     struct.pack_into('<I',t,8,len(t));struct.pack_into('<I',t,12,crc(t));(out/'title_logo.dptx').write_bytes(t)
 

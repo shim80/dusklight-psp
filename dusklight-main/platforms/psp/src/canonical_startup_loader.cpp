@@ -110,6 +110,7 @@ CanonicalStartupLoadError load_room_package(
 
 CanonicalStartupLoadError load_animation(
     const char* path,
+    CanonicalStartupLoadError package_error,
     OwnedStartupAnimation* output) {
     RawPackage raw = {};
     CanonicalStartupLoadError error = load_raw(path, &raw);
@@ -120,25 +121,7 @@ CanonicalStartupLoadError load_animation(
     if (playable::validate_dpan(raw.bytes, raw.size, &view) !=
         playable::PackageError::Ok) {
         std::free(raw.bytes);
-        return CanonicalStartupLoadError::TitleLogoAnimationPackage;
-    }
-    *output = {raw.bytes, raw.size, view};
-    return CanonicalStartupLoadError::Ok;
-}
-
-CanonicalStartupLoadError load_camera(
-    const char* path,
-    OwnedStartupCamera* output) {
-    RawPackage raw = {};
-    CanonicalStartupLoadError error = load_raw(path, &raw);
-    if (error != CanonicalStartupLoadError::Ok) {
-        return error;
-    }
-    camera::TrackView view = {};
-    if (camera::validate_track(raw.bytes, raw.size, &view) !=
-        camera::TrackError::Ok) {
-        std::free(raw.bytes);
-        return CanonicalStartupLoadError::TitleCameraPackage;
+        return package_error;
     }
     *output = {raw.bytes, raw.size, view};
     return CanonicalStartupLoadError::Ok;
@@ -216,18 +199,81 @@ CanonicalStartupLoadError load_canonical_startup_packages(
         return error;
     }
     error = load_animation(
-        assets.title_logo_animation, &packages->title_logo_animation);
-    if (error != CanonicalStartupLoadError::Ok) {
-        unload_canonical_startup_packages(packages);
-        return error;
-    }
-    error = load_camera(
-        assets.title_camera, &packages->title_camera);
+        assets.title_logo_animation,
+        CanonicalStartupLoadError::TitleLogoAnimationPackage,
+        &packages->title_logo_animation);
     if (error != CanonicalStartupLoadError::Ok) {
         unload_canonical_startup_packages(packages);
         return error;
     }
     return CanonicalStartupLoadError::Ok;
+}
+
+CanonicalStartupLoadError load_canonical_intro_packages(
+    CanonicalIntroPackages* packages) {
+    if (packages == nullptr) {
+        return CanonicalStartupLoadError::InvalidOutput;
+    }
+    *packages = {};
+    CanonicalStartupAssets assets = {};
+    if (resolve_canonical_startup_assets(&assets) != CanonicalAssetError::Ok) {
+        return CanonicalStartupLoadError::AssetContract;
+    }
+    CanonicalStartupLoadError error = load_room_package(
+        assets.demo01_rusl_wide_model, room::validate_dprm,
+        CanonicalStartupLoadError::Demo01RuslWideModelPackage,
+        &packages->rusl_wide_model);
+    if (error == CanonicalStartupLoadError::Ok) {
+        error = load_room_package(
+            assets.demo01_rusl_closeup_model, room::validate_dprm,
+            CanonicalStartupLoadError::Demo01RuslCloseupModelPackage,
+            &packages->rusl_closeup_model);
+    }
+    if (error == CanonicalStartupLoadError::Ok) {
+        error = load_room_package(
+            assets.demo01_rusl_textures, room::validate_room_dptx,
+            CanonicalStartupLoadError::Demo01RuslTexturePackage,
+            &packages->rusl_textures);
+    }
+    if (error == CanonicalStartupLoadError::Ok) {
+        error = load_animation(
+            assets.demo01_link_wide_animation,
+            CanonicalStartupLoadError::Demo01LinkWideAnimationPackage,
+            &packages->link_wide_animation);
+    }
+    if (error == CanonicalStartupLoadError::Ok) {
+        error = load_animation(
+            assets.demo01_link_closeup_animation,
+            CanonicalStartupLoadError::Demo01LinkCloseupAnimationPackage,
+            &packages->link_closeup_animation);
+    }
+    if (error != CanonicalStartupLoadError::Ok) {
+        unload_canonical_intro_packages(packages);
+    }
+    return error;
+}
+
+CanonicalStartupLoadError load_canonical_file_select_ui(
+    OwnedStartupUi* package) {
+    if (package == nullptr) {
+        return CanonicalStartupLoadError::InvalidOutput;
+    }
+    *package = {};
+    CanonicalStartupAssets assets = {};
+    if (resolve_canonical_startup_assets(&assets) != CanonicalAssetError::Ok) {
+        return CanonicalStartupLoadError::AssetContract;
+    }
+    return load_ui(
+        assets.file_select_ui,
+        CanonicalStartupLoadError::FileSelectUiPackage, package);
+}
+
+void unload_canonical_startup_ui(OwnedStartupUi* package) {
+    if (package == nullptr) {
+        return;
+    }
+    unload_raw(&package->bytes);
+    *package = {};
 }
 
 void unload_canonical_startup_packages(CanonicalStartupPackages* packages) {
@@ -243,7 +289,18 @@ void unload_canonical_startup_packages(CanonicalStartupPackages* packages) {
     unload_raw(&packages->title_logo_model.bytes);
     unload_raw(&packages->title_logo_textures.bytes);
     unload_raw(&packages->title_logo_animation.bytes);
-    unload_raw(&packages->title_camera.bytes);
+    *packages = {};
+}
+
+void unload_canonical_intro_packages(CanonicalIntroPackages* packages) {
+    if (packages == nullptr) {
+        return;
+    }
+    unload_raw(&packages->rusl_wide_model.bytes);
+    unload_raw(&packages->rusl_closeup_model.bytes);
+    unload_raw(&packages->rusl_textures.bytes);
+    unload_raw(&packages->link_wide_animation.bytes);
+    unload_raw(&packages->link_closeup_animation.bytes);
     *packages = {};
 }
 
@@ -265,7 +322,11 @@ const char* canonical_startup_load_error_name(CanonicalStartupLoadError error) {
     case CanonicalStartupLoadError::TitleLogoModelPackage: return "title_logo_dprm";
     case CanonicalStartupLoadError::TitleLogoTexturePackage: return "title_logo_dptx";
     case CanonicalStartupLoadError::TitleLogoAnimationPackage: return "title_logo_dpan";
-    case CanonicalStartupLoadError::TitleCameraPackage: return "title_camera_dpcm";
+    case CanonicalStartupLoadError::Demo01RuslWideModelPackage: return "demo01_rusl_wide_dprm";
+    case CanonicalStartupLoadError::Demo01RuslCloseupModelPackage: return "demo01_rusl_closeup_dprm";
+    case CanonicalStartupLoadError::Demo01RuslTexturePackage: return "demo01_rusl_dptx";
+    case CanonicalStartupLoadError::Demo01LinkWideAnimationPackage: return "demo01_link_wide_dpan";
+    case CanonicalStartupLoadError::Demo01LinkCloseupAnimationPackage: return "demo01_link_closeup_dpan";
     }
     return "unknown";
 }

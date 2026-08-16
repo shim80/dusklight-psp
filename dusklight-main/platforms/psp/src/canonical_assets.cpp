@@ -16,12 +16,16 @@ constexpr CanonicalStartupAssets kStartupAssets = {
     "data/startup/startup_logos.dpsu",
     "data/startup/title_ui.dpsu",
     "data/startup/file_select.dpsu",
-    "data/startup/fsp102_environment.dprm",
-    "data/startup/fsp102_environment.dptx",
+    "data/startup/title_room.dprm",
+    "data/startup/title_room.dptx",
     "data/startup/title_logo.dprm",
     "data/startup/title_logo.dptx",
     "data/startup/title_logo.dpan",
-    "data/startup/title_camera.dpcm",
+    "data/startup/demo01_rusl_wide.dprm",
+    "data/startup/demo01_rusl_closeup.dprm",
+    "data/startup/demo01_rusl.dptx",
+    "data/startup/demo01_link_wide.dpan",
+    "data/startup/demo01_link_closeup.dpan",
 };
 constexpr char kFsp108[] = "F_SP108";
 constexpr CanonicalRoomAssets kFsp108R01Assets = {
