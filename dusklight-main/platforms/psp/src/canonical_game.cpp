@@ -14,6 +14,7 @@
 #include "dusk/psp/real_room_runtime.hpp"
 #include "dusk/psp/room_package.hpp"
 #include "dusk/psp/startup_save_flow.hpp"
+#include "dusk/psp/startup_intro.hpp"
 #include "dusk/psp/startup_name_entry.hpp"
 #include "dusk/psp/startup_route_capture.hpp"
 
@@ -23,6 +24,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -324,6 +326,40 @@ playable::RealRoomRenderInput make_render_input(
     return output;
 }
 
+void configure_new_game_intro_camera(
+    startup::NewGameIntroPhase phase,
+    playable::RealRoomRenderInput* input) {
+    if (input == nullptr) {
+        return;
+    }
+    const float forward_x = std::sin(input->link_yaw);
+    const float forward_z = std::cos(input->link_yaw);
+    const float right_x = forward_z;
+    const float right_z = -forward_x;
+    if (phase == startup::NewGameIntroPhase::Wide) {
+        input->camera_center = {
+            input->link_position.x + forward_x * 150.0f,
+            input->link_position.y + 105.0f,
+            input->link_position.z + forward_z * 150.0f};
+        input->camera_eye = {
+            input->link_position.x - forward_x * 520.0f + right_x * 70.0f,
+            input->link_position.y + 285.0f,
+            input->link_position.z - forward_z * 520.0f + right_z * 70.0f};
+        input->camera_fov = 45.0f;
+    } else {
+        input->camera_center = {
+            input->link_position.x,
+            input->link_position.y + 128.0f,
+            input->link_position.z};
+        input->camera_eye = {
+            input->link_position.x + forward_x * 165.0f + right_x * 55.0f,
+            input->link_position.y + 145.0f,
+            input->link_position.z + forward_z * 165.0f + right_z * 55.0f};
+        input->camera_fov = 39.0f;
+    }
+    input->hide_hud = true;
+}
+
 bool initialize_first_playable(
     const save::StartContext& start,
     CanonicalRoomPackages* room_packages,
@@ -529,6 +565,8 @@ int run_canonical_game() {
     bool captured_file_select = false;
     bool captured_player_name = false;
     bool captured_horse_name = false;
+    bool captured_intro_wide = false;
+    bool captured_intro_closeup = false;
     bool captured_gameplay = false;
 
     static CanonicalRoomPackages room_packages = {};
@@ -539,6 +577,7 @@ int run_canonical_game() {
     static playable::RenderMetrics render_metrics = {};
     controls::MapperState mapper = {};
     startup::NameEntryRuntime name_entry = {};
+    startup::NewGameIntroRuntime new_game_intro = {};
     NewGameNamePhase name_phase = NewGameNamePhase::Inactive;
     char selected_player_name[
         startup::NameEntryRuntime::kMaximumNameBytes + 1] = {};
@@ -699,11 +738,73 @@ int run_canonical_game() {
                     gameplay_active = true;
                     actor_system_active = true;
                     renderer_active = true;
+                    new_game_intro.initialize(
+                        flow.selected_action() ==
+                        save::FileSelectAction::NewGame);
                 }
             }
         }
 
-        if (gameplay_active) {
+        const bool intro_was_active =
+            gameplay_active && new_game_intro.active();
+        if (intro_was_active) {
+            const startup::NewGameIntroPhase phase =
+                new_game_intro.phase();
+            const bool route_advance = capture_route &&
+                (phase == startup::NewGameIntroPhase::Wide
+                     ? captured_intro_wide
+                     : captured_intro_closeup);
+            room::set_link_animation_motion(
+                &runtime,
+                playable::source_foot_motion_raw(link_runtime),
+                playable::source_old_frame_rate_next(link_runtime));
+            if (!playable::update_source_animation_and_skin(
+                    &link_runtime, playable::Locomotion::Idle,
+                    0.0f, 1.0f / 30.0f)) {
+                log_error("new game intro animation failed", -28);
+                terminal_room_error = true;
+                gameplay_active = false;
+            } else {
+                playable::MessageOverlayRenderInput overlay = {};
+                overlay.text = new_game_intro.message();
+                overlay.visible_characters = 0xffffu;
+                overlay.active = true;
+                overlay.awaiting_confirm = true;
+                playable::RealRoomRenderInput intro_input =
+                    make_render_input(runtime, link_runtime);
+                intro_input.message_overlay = &overlay;
+                configure_new_game_intro_camera(phase, &intro_input);
+                if (!playable::render_real_room_frame(
+                        link_runtime, intro_input, &render_metrics)) {
+                    log_error("new game intro render failed", -29);
+                    terminal_room_error = true;
+                    gameplay_active = false;
+                } else {
+                    if (capture_route &&
+                        phase == startup::NewGameIntroPhase::Wide &&
+                        !captured_intro_wide) {
+                        captured_intro_wide = capture_startup_route_frame(
+                            "startup-intro-wide.5650");
+                    } else if (capture_route &&
+                               phase ==
+                                   startup::NewGameIntroPhase::Closeup &&
+                               !captured_intro_closeup) {
+                        captured_intro_closeup =
+                            capture_startup_route_frame(
+                                "startup-intro-closeup.5650");
+                    }
+                    if (!new_game_intro.tick({
+                            input.action_pressed || route_advance,
+                            input.pause_pressed})) {
+                        log_error("new game intro update failed", -30);
+                        terminal_room_error = true;
+                        gameplay_active = false;
+                    }
+                }
+            }
+        }
+
+        if (gameplay_active && !intro_was_active) {
             room::set_link_animation_motion(
                 &runtime,
                 playable::source_foot_motion_raw(link_runtime),

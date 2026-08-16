@@ -176,6 +176,7 @@ struct RealRoomRenderInput {
     presentation::Profile presentation;
     GameplayState ui_state;
     const MessageOverlayRenderInput* message_overlay;
+    bool hide_hud;
     PspLinkRootPoseMetrics root_pose;
     const environment::PspMaterialEnvironmentState* environment;
     const shadow::PspShadowSystem* shadows;

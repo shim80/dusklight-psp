@@ -12,12 +12,14 @@ cmake -S "$PROJECT_ROOT/test/canonical-runtime" \
 cmake --build "$BUILD" --target \
   startup_runtime_host_test startup_ui_host_test \
   startup_name_entry_host_test \
+  startup_intro_host_test \
   startup_name_ui_host_test \
   startup_title_asset_host_test startup_camera_parity_host_test \
   startup_first_playable_host_test \
   frame_profiler_host_test
 "$BUILD/startup_runtime_host_test"
 "$BUILD/startup_name_entry_host_test"
+"$BUILD/startup_intro_host_test"
 "$BUILD/frame_profiler_host_test"
 "$BUILD/startup_camera_parity_host_test"
 if [ -f "$PROJECT_ROOT/build/assets/dusklight-startup/startup_logos.dpsu" ] &&

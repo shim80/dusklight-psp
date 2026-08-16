@@ -36,6 +36,17 @@ add_executable(startup_name_entry_host_test
     startup_name_entry_host_test.cpp
     "${DUSK_PSP_ROOT}/src/startup_name_entry.cpp"
 )
+add_executable(startup_intro_host_test
+    startup_intro_host_test.cpp
+    "${DUSK_PSP_ROOT}/src/startup_intro.cpp"
+)
+target_include_directories(startup_intro_host_test PRIVATE
+    "${DUSK_PSP_ROOT}/include"
+)
+target_compile_features(startup_intro_host_test PRIVATE cxx_std_20)
+target_compile_options(startup_intro_host_test PRIVATE
+    -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
+)
 add_executable(startup_name_ui_host_test
     startup_name_ui_host_test.cpp
     "${DUSK_PSP_ROOT}/src/startup_ui_package.cpp"

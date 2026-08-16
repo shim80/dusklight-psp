@@ -15,9 +15,9 @@ constexpr char kCaptureMarker[] = "DUSKLIGHT_PSP_STARTUP_ROUTE_CAPTURE_OK";
 constexpr char kCaptureMetrics[] =
     "mode=startup_route_capture\n"
     "capture_format=5650\n"
-    "capture_count=8\n"
+    "capture_count=10\n"
     "route=team_logo,fsp102_scene,title_logo,title_prompt,file_select,"
-    "player_name,horse_name,fsp108\n"
+    "player_name,horse_name,intro_wide,intro_closeup,fsp108\n"
     "error_code=0\n";
 alignas(64) std::uint8_t g_capture[kCaptureBytes] = {};
 

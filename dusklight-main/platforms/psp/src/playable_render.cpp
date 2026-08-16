@@ -390,6 +390,14 @@ void bind(const Texture& texture) {
     sceGuColor(0xffffffffu);
 }
 
+std::uint16_t texture_storage_dimension(std::uint32_t logical) {
+    std::uint32_t stored = 8;
+    while (stored < logical && stored < 512) {
+        stored <<= 1;
+    }
+    return static_cast<std::uint16_t>(stored);
+}
+
 void configure_real_room_camera(const RealRoomRenderInput& input) {
     sceGuDepthFunc(GU_GEQUAL);
     sceGuDepthMask(GU_FALSE);
@@ -2196,10 +2204,11 @@ void draw_message_overlay(
     // Simplified PSP presentation: source text/lifetime are authoritative,
     // while the heavy GameCube message-pane effects are intentionally deferred.
     rectangle(26, 145, 428, 119, 0xd010151du, metrics);
-    rectangle(26, 145, 428, 2, 0xffc8a85cu, metrics);
-    rectangle(26, 262, 428, 2, 0xffc8a85cu, metrics);
-    rectangle(26, 145, 2, 119, 0xffc8a85cu, metrics);
-    rectangle(452, 145, 2, 119, 0xffc8a85cu, metrics);
+    rectangle(26, 145, 428, 2, 0xff5ca8c8u, metrics);
+    rectangle(26, 262, 428, 2, 0xff5ca8c8u, metrics);
+    rectangle(26, 145, 2, 119, 0xff5ca8c8u, metrics);
+    rectangle(452, 145, 2, 119, 0xff5ca8c8u, metrics);
+    sceGuEnable(GU_TEXTURE_2D);
     bind(g_ui);
     sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
     sceGuTexScale(1.0f, 1.0f);
@@ -2461,18 +2470,31 @@ bool initialize_renderer(
     cursor = (cursor + 15u) & ~15u;
     const std::uint32_t ui_source = read_u32(ui.bytes + 40);
     const std::uint32_t ui_bytes = read_u32(ui.bytes + 44);
-    if (ui_bytes > metrics->edram_total - cursor) {
+    const std::uint16_t ui_width = static_cast<std::uint16_t>(
+        read_u32(ui.bytes + 16));
+    const std::uint16_t ui_height = static_cast<std::uint16_t>(
+        read_u32(ui.bytes + 20));
+    const std::uint16_t ui_stored_width =
+        texture_storage_dimension(ui_width);
+    const std::uint16_t ui_stored_height =
+        texture_storage_dimension(ui_height);
+    const std::uint32_t ui_storage_bytes =
+        static_cast<std::uint32_t>(ui_stored_width) *
+        ui_stored_height * 2u;
+    if (ui_bytes > ui_storage_bytes ||
+        ui_storage_bytes > metrics->edram_total - cursor) {
         return false;
     }
     std::memcpy(g_edram + cursor, ui.bytes + ui_source, ui_bytes);
+    std::memset(
+        g_edram + cursor + ui_bytes, 0,
+        ui_storage_bytes - ui_bytes);
     g_ui = {
-        static_cast<std::uint16_t>(read_u32(ui.bytes + 16)),
-        static_cast<std::uint16_t>(read_u32(ui.bytes + 20)),
-        static_cast<std::uint16_t>(read_u32(ui.bytes + 16)),
-        static_cast<std::uint16_t>(read_u32(ui.bytes + 20)),
-        cursor, ui_bytes, 2};
-    cursor += ui_bytes;
-    metrics->edram_ui = ui_bytes;
+        ui_width, ui_height,
+        ui_stored_width, ui_stored_height,
+        cursor, ui_storage_bytes, 2};
+    cursor += ui_storage_bytes;
+    metrics->edram_ui = ui_storage_bytes;
     metrics->edram_remaining = metrics->edram_total - cursor;
     if (metrics->edram_textures + metrics->edram_ui > 1150000 ||
         metrics->edram_remaining < 80000) {
@@ -2520,26 +2542,35 @@ bool initialize_startup_ui_renderer(
     metrics->edram_total = sceGeEdramGetSize();
     metrics->edram_framebuffers = kFramebuffers;
     metrics->edram_depth = kBufferBytes;
-    if (g_edram == nullptr ||
-        ui.atlas_bytes > metrics->edram_total - kTextureOffset) {
+    const std::uint16_t ui_stored_width =
+        texture_storage_dimension(ui.atlas_width);
+    const std::uint16_t ui_stored_height =
+        texture_storage_dimension(ui.atlas_height);
+    const std::uint32_t ui_storage_bytes =
+        static_cast<std::uint32_t>(ui_stored_width) *
+        ui_stored_height * 2u;
+    if (g_edram == nullptr || ui.atlas_bytes > ui_storage_bytes ||
+        ui_storage_bytes > metrics->edram_total - kTextureOffset) {
         return false;
     }
     std::memcpy(
         g_edram + kTextureOffset,
         ui.bytes + ui.atlas_offset,
         ui.atlas_bytes);
+    std::memset(
+        g_edram + kTextureOffset + ui.atlas_bytes, 0,
+        ui_storage_bytes - ui.atlas_bytes);
     g_ui = {
         static_cast<std::uint16_t>(ui.atlas_width),
         static_cast<std::uint16_t>(ui.atlas_height),
-        static_cast<std::uint16_t>(ui.atlas_width),
-        static_cast<std::uint16_t>(ui.atlas_height),
-        kTextureOffset, ui.atlas_bytes, 2};
+        ui_stored_width, ui_stored_height,
+        kTextureOffset, ui_storage_bytes, 2};
     g_startup_ui_package = ui;
     g_list = command_list;
     g_list_bytes = command_list_bytes;
-    metrics->edram_ui = ui.atlas_bytes;
+    metrics->edram_ui = ui_storage_bytes;
     metrics->edram_remaining =
-        metrics->edram_total - kTextureOffset - ui.atlas_bytes;
+        metrics->edram_total - kTextureOffset - ui_storage_bytes;
     sceKernelDcacheWritebackAll();
     sceGuInit();
     sceGuStart(GU_DIRECT, g_list);
@@ -3049,7 +3080,10 @@ bool render_real_room_frame(
         draw_room_bucket(2, metrics);
         draw_real_room_entities(effective, metrics);
         draw_root_pose_debug(effective, metrics);
-        draw_ui(effective.ui_state, metrics);
+        if (!effective.hide_hud) {
+            draw_ui(effective.ui_state, metrics);
+        }
+        draw_message_overlay(effective.message_overlay, metrics);
     }
     const int bytes = sceGuFinish();
     if (bytes < 0 || static_cast<std::uint32_t>(bytes) > g_list_bytes ||
@@ -3221,7 +3255,9 @@ bool render_real_room_frame_with_models(
     }
     const std::uint64_t hud_begin = monotonic_microseconds();
     if (!opaque_only) {
-        draw_ui(effective.ui_state, metrics);
+        if (!effective.hide_hud) {
+            draw_ui(effective.ui_state, metrics);
+        }
         draw_message_overlay(effective.message_overlay, metrics);
     }
     metrics->hud_cpu_us = static_cast<std::uint32_t>(
