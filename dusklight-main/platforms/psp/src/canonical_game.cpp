@@ -327,37 +327,69 @@ playable::RealRoomRenderInput make_render_input(
 }
 
 void configure_new_game_intro_camera(
-    startup::NewGameIntroPhase phase,
+    const startup::NewGameIntroShot& shot,
     playable::RealRoomRenderInput* input) {
     if (input == nullptr) {
         return;
     }
-    const float forward_x = std::sin(input->link_yaw);
-    const float forward_z = std::cos(input->link_yaw);
-    const float right_x = forward_z;
-    const float right_z = -forward_x;
-    if (phase == startup::NewGameIntroPhase::Wide) {
-        input->camera_center = {
-            input->link_position.x + forward_x * 150.0f,
-            input->link_position.y + 105.0f,
-            input->link_position.z + forward_z * 150.0f};
-        input->camera_eye = {
-            input->link_position.x - forward_x * 520.0f + right_x * 70.0f,
-            input->link_position.y + 285.0f,
-            input->link_position.z - forward_z * 520.0f + right_z * 70.0f};
-        input->camera_fov = 45.0f;
-    } else {
-        input->camera_center = {
-            input->link_position.x,
-            input->link_position.y + 128.0f,
-            input->link_position.z};
-        input->camera_eye = {
-            input->link_position.x + forward_x * 165.0f + right_x * 55.0f,
-            input->link_position.y + 145.0f,
-            input->link_position.z + forward_z * 165.0f + right_z * 55.0f};
-        input->camera_fov = 39.0f;
-    }
+    constexpr float kDegreesToRadians =
+        3.14159265358979323846f / 180.0f;
+    constexpr float kRadiansToDegrees =
+        180.0f / 3.14159265358979323846f;
+    constexpr float kSourceAspect = 4.0f / 3.0f;
+    constexpr float kPspAspect = 480.0f / 272.0f;
+    input->link_position = {
+        shot.actor_translation.x,
+        shot.actor_translation.y,
+        shot.actor_translation.z};
+    input->link_yaw =
+        shot.actor_rotation_degrees.y * kDegreesToRadians;
+    input->camera_eye = {
+        shot.camera_eye.x, shot.camera_eye.y, shot.camera_eye.z};
+    input->camera_center = {
+        shot.camera_center.x,
+        shot.camera_center.y,
+        shot.camera_center.z};
+    // Match TARGET_PC dCamera_c::widezoom_correction for a cinema-trimmed
+    // 16:9 viewport: preserve the source 4:3 horizontal framing by reducing
+    // the vertical FOV with the exact tangent-space aspect correction.
+    input->camera_fov = 2.0f * std::atan(
+        std::tan(shot.camera_fov * kDegreesToRadians * 0.5f) *
+        (kSourceAspect / kPspAspect)) * kRadiansToDegrees;
     input->hide_hud = true;
+}
+
+playable::StaticModelRenderView make_intro_rusl_model(
+    const CanonicalIntroPackages& packages,
+    startup::NewGameIntroPhase phase,
+    const startup::NewGameIntroShot& shot) {
+    constexpr float kDegreesToRadians =
+        3.14159265358979323846f / 180.0f;
+    const float yaw =
+        shot.actor_rotation_degrees.y * kDegreesToRadians;
+    const float sine = std::sin(yaw);
+    const float cosine = std::cos(yaw);
+    const OwnedStartupRoomPackage& source =
+        phase == startup::NewGameIntroPhase::Wide
+            ? packages.rusl_wide_model
+            : packages.rusl_closeup_model;
+    playable::StaticModelRenderView model = {};
+    model.model = source.bytes;
+    model.model_size = source.size;
+    model.textures = packages.rusl_textures.bytes;
+    model.texture_size = packages.rusl_textures.size;
+    model.matrix[0] = cosine;
+    model.matrix[2] = sine;
+    model.matrix[3] = shot.actor_translation.x;
+    model.matrix[5] = 1.0f;
+    model.matrix[7] = shot.actor_translation.y;
+    model.matrix[8] = -sine;
+    model.matrix[10] = cosine;
+    model.matrix[11] = shot.actor_translation.z;
+    model.scale[0] = 1.0f;
+    model.scale[1] = 1.0f;
+    model.scale[2] = 1.0f;
+    return model;
 }
 
 bool initialize_first_playable(
@@ -571,6 +603,7 @@ int run_canonical_game() {
 
     static CanonicalRoomPackages room_packages = {};
     static CanonicalCommonPackages common_packages = {};
+    static CanonicalIntroPackages intro_packages = {};
     static room::RealRoomRuntime runtime = {};
     static actor::ActorSystem actors = {};
     static playable::Runtime link_runtime = {};
@@ -585,6 +618,7 @@ int run_canonical_game() {
     bool gameplay_active = false;
     bool actor_system_active = false;
     bool renderer_active = false;
+    bool intro_packages_active = false;
     bool terminal_room_error = false;
     bool first_render_proven = false;
     bool controls_proven = false;
@@ -738,9 +772,24 @@ int run_canonical_game() {
                     gameplay_active = true;
                     actor_system_active = true;
                     renderer_active = true;
-                    new_game_intro.initialize(
+                    const bool intro_enabled =
                         flow.selected_action() ==
-                        save::FileSelectAction::NewGame);
+                        save::FileSelectAction::NewGame;
+                    if (intro_enabled) {
+                        const CanonicalStartupLoadError intro_error =
+                            load_canonical_intro_packages(&intro_packages);
+                        if (intro_error != CanonicalStartupLoadError::Ok) {
+                            log_error(
+                                canonical_startup_load_error_name(intro_error),
+                                -28);
+                            terminal_room_error = true;
+                            gameplay_active = false;
+                        } else {
+                            intro_packages_active = true;
+                        }
+                    }
+                    new_game_intro.initialize(
+                        intro_enabled && intro_packages_active);
                 }
             }
         }
@@ -750,32 +799,41 @@ int run_canonical_game() {
         if (intro_was_active) {
             const startup::NewGameIntroPhase phase =
                 new_game_intro.phase();
+            const startup::NewGameIntroShot* shot =
+                new_game_intro.shot();
             const bool route_advance = capture_route &&
                 (phase == startup::NewGameIntroPhase::Wide
                      ? captured_intro_wide
                      : captured_intro_closeup);
-            room::set_link_animation_motion(
-                &runtime,
-                playable::source_foot_motion_raw(link_runtime),
-                playable::source_old_frame_rate_next(link_runtime));
-            if (!playable::update_source_animation_and_skin(
-                    &link_runtime, playable::Locomotion::Idle,
-                    0.0f, 1.0f / 30.0f)) {
+            link_runtime.packages.animations =
+                phase == startup::NewGameIntroPhase::Wide
+                    ? intro_packages.link_wide_animation.view
+                    : intro_packages.link_closeup_animation.view;
+            if (shot == nullptr ||
+                !playable::apply_source_animation_resource_and_skin(
+                    &link_runtime,
+                    shot->link_body_bck_id,
+                    shot->link_animation_frame +
+                        static_cast<float>(new_game_intro.phase_frames()))) {
                 log_error("new game intro animation failed", -28);
                 terminal_room_error = true;
                 gameplay_active = false;
             } else {
                 playable::MessageOverlayRenderInput overlay = {};
                 overlay.text = new_game_intro.message();
+                overlay.source_message_id = shot->source_message_id;
                 overlay.visible_characters = 0xffffu;
                 overlay.active = true;
                 overlay.awaiting_confirm = true;
                 playable::RealRoomRenderInput intro_input =
                     make_render_input(runtime, link_runtime);
                 intro_input.message_overlay = &overlay;
-                configure_new_game_intro_camera(phase, &intro_input);
-                if (!playable::render_real_room_frame(
-                        link_runtime, intro_input, &render_metrics)) {
+                configure_new_game_intro_camera(*shot, &intro_input);
+                const playable::StaticModelRenderView rusl =
+                    make_intro_rusl_model(intro_packages, phase, *shot);
+                if (!playable::render_real_room_frame_with_models(
+                        link_runtime, intro_input, &rusl, 1,
+                        &render_metrics)) {
                     log_error("new game intro render failed", -29);
                     terminal_room_error = true;
                     gameplay_active = false;
@@ -799,6 +857,9 @@ int run_canonical_game() {
                         log_error("new game intro update failed", -30);
                         terminal_room_error = true;
                         gameplay_active = false;
+                    } else if (new_game_intro.complete()) {
+                        link_runtime.packages.animations =
+                            common_packages.link_animations.view;
                     }
                 }
             }
@@ -888,6 +949,9 @@ int run_canonical_game() {
         playable::shutdown_renderer();
     }
     unload_canonical_startup_ui(&file_select_ui);
+    if (intro_packages_active) {
+        unload_canonical_intro_packages(&intro_packages);
+    }
     if (actor_system_active) {
         actor::destroy_actor_system(&actors);
     }

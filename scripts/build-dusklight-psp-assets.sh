@@ -34,6 +34,9 @@ ensure_startup_assets() {
     file_select.dpsu \
     title_room.dprm title_room.dptx \
     title_logo.dprm title_logo.dptx title_logo.dpan \
+    demo01_rusl_wide.dprm demo01_rusl_closeup.dprm \
+    demo01_rusl.dptx demo01_link_wide.dpan \
+    demo01_link_closeup.dpan \
     fsp108_room.dprm fsp108_room.dptx \
     fsp108_room.dpcl fsp108_room.dpsc; do
     [ -f "$STARTUP/$package" ] ||
@@ -70,7 +73,10 @@ prepare_tree() {
     startup.dpst startup_logos.dpsu title_ui.dpsu \
     file_select.dpsu \
     title_room.dprm title_room.dptx \
-    title_logo.dprm title_logo.dptx title_logo.dpan; do
+    title_logo.dprm title_logo.dptx title_logo.dpan \
+    demo01_rusl_wide.dprm demo01_rusl_closeup.dprm \
+    demo01_rusl.dptx demo01_link_wide.dpan \
+    demo01_link_closeup.dpan; do
     cp -- "$STARTUP/$package" "$destination/data/startup/$package"
   done
   python3 "$PROJECT_ROOT/tools/merge_startup_name_glyphs.py" \

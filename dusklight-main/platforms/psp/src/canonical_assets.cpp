@@ -21,6 +21,11 @@ constexpr CanonicalStartupAssets kStartupAssets = {
     "data/startup/title_logo.dprm",
     "data/startup/title_logo.dptx",
     "data/startup/title_logo.dpan",
+    "data/startup/demo01_rusl_wide.dprm",
+    "data/startup/demo01_rusl_closeup.dprm",
+    "data/startup/demo01_rusl.dptx",
+    "data/startup/demo01_link_wide.dpan",
+    "data/startup/demo01_link_closeup.dpan",
 };
 constexpr char kFsp108[] = "F_SP108";
 constexpr CanonicalRoomAssets kFsp108R01Assets = {

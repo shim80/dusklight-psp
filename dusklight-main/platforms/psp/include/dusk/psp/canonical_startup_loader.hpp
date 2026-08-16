@@ -48,6 +48,14 @@ struct CanonicalStartupPackages {
     OwnedStartupAnimation title_logo_animation;
 };
 
+struct CanonicalIntroPackages {
+    OwnedStartupRoomPackage rusl_wide_model;
+    OwnedStartupRoomPackage rusl_closeup_model;
+    OwnedStartupRoomPackage rusl_textures;
+    OwnedStartupAnimation link_wide_animation;
+    OwnedStartupAnimation link_closeup_animation;
+};
+
 enum class CanonicalStartupLoadError : std::uint8_t {
     Ok = 0,
     InvalidOutput,
@@ -65,13 +73,21 @@ enum class CanonicalStartupLoadError : std::uint8_t {
     TitleLogoModelPackage,
     TitleLogoTexturePackage,
     TitleLogoAnimationPackage,
+    Demo01RuslWideModelPackage,
+    Demo01RuslCloseupModelPackage,
+    Demo01RuslTexturePackage,
+    Demo01LinkWideAnimationPackage,
+    Demo01LinkCloseupAnimationPackage,
 };
 
 CanonicalStartupLoadError load_canonical_startup_packages(
     CanonicalStartupPackages* packages);
 CanonicalStartupLoadError load_canonical_file_select_ui(
     OwnedStartupUi* package);
+CanonicalStartupLoadError load_canonical_intro_packages(
+    CanonicalIntroPackages* packages);
 void unload_canonical_startup_ui(OwnedStartupUi* package);
+void unload_canonical_intro_packages(CanonicalIntroPackages* packages);
 void unload_canonical_startup_packages(CanonicalStartupPackages* packages);
 const char* canonical_startup_load_error_name(CanonicalStartupLoadError error);
 

@@ -2148,7 +2148,8 @@ void original_ui_text_bounded(
     std::uint16_t visible_characters,
     int x,
     int baseline,
-    RenderMetrics* metrics) {
+    RenderMetrics* metrics,
+    std::uint32_t color = 0xffffffffu) {
     if (text == nullptr) return;
     const int origin_x = x;
     std::uint16_t consumed = 0;
@@ -2175,11 +2176,30 @@ void original_ui_text_bounded(
         const int draw_y = baseline - 18 + (bearing_y * 3 + 2) / 4;
         const int draw_width = std::max(1, (source_width * 3 + 3) / 4);
         const int draw_height = std::max(1, (source_height * 3 + 3) / 4);
-        original_ui_sprite(
-            id, draw_x, draw_y, draw_width, draw_height, metrics);
+        const std::uint8_t* glyph = ui_record(id);
+        sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
+        sceGuColor(color);
+        sprite(
+            draw_x, draw_y, draw_width, draw_height,
+            read_u16(glyph + 12), read_u16(glyph + 14),
+            source_width, source_height, metrics);
         const int advance = read_u16(item + 28);
         x += std::max(5, advance * 3 / 4);
     }
+    sceGuColor(0xffffffffu);
+}
+
+int original_ui_text_width(const char* text) {
+    int width = 0;
+    if (text == nullptr) return width;
+    for (const char* cursor = text; *cursor != '\0'; ++cursor) {
+        const std::uint8_t* item = ui_record(static_cast<std::uint16_t>(
+            128 + static_cast<unsigned char>(*cursor)));
+        if (item != nullptr) {
+            width += std::max(5, read_u16(item + 28) * 3 / 4);
+        }
+    }
+    return width;
 }
 
 void original_ui_text(
@@ -2201,22 +2221,44 @@ void draw_message_overlay(
     sceGuEnable(GU_BLEND);
     sceGuBlendFunc(
         GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
-    // Simplified PSP presentation: source text/lifetime are authoritative,
-    // while the heavy GameCube message-pane effects are intentionally deferred.
-    rectangle(26, 145, 428, 119, 0xd010151du, metrics);
-    rectangle(26, 145, 428, 2, 0xff5ca8c8u, metrics);
-    rectangle(26, 262, 428, 2, 0xff5ca8c8u, metrics);
-    rectangle(26, 145, 2, 119, 0xff5ca8c8u, metrics);
-    rectangle(452, 145, 2, 119, 0xff5ca8c8u, metrics);
+    // Source composition: a transparent lower vignette preserves the actors,
+    // with a narrow black ornament band and the confirmation prompt above.
+    // The original pane textures are not in DPUI yet, so the scrollwork is a
+    // deliberately bounded geometric approximation.
+    rectangle(0, 0, 480, 16, 0xc8000000u, metrics);
+    rectangle(0, 171, 480, 22, 0x28000000u, metrics);
+    rectangle(0, 193, 480, 22, 0x58000000u, metrics);
+    rectangle(0, 215, 480, 22, 0x80000000u, metrics);
+    rectangle(0, 237, 480, 19, 0xa8000000u, metrics);
+    rectangle(0, 256, 480, 16, 0xe0000000u, metrics);
+    rectangle(28, 255, 424, 1, 0x80684e20u, metrics);
+    rectangle(52, 263, 96, 1, 0x704c3818u, metrics);
+    rectangle(332, 263, 96, 1, 0x704c3818u, metrics);
     sceGuEnable(GU_TEXTURE_2D);
     bind(g_ui);
     sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
     sceGuTexScale(1.0f, 1.0f);
-    original_ui_text_bounded(
-        overlay->text, overlay->visible_characters,
-        42, 168, metrics);
+    if (overlay->source_message_id == 3004 &&
+        overlay->visible_characters == 0xffffu) {
+        constexpr char kPrefix[] = "pervades the ";
+        constexpr char kHighlight[] = "hour of twilight";
+        original_ui_text("That is why loneliness always", 68, 222, metrics);
+        original_ui_text(kPrefix, 68, 245, metrics);
+        const int highlight_x = 68 + original_ui_text_width(kPrefix);
+        original_ui_text_bounded(
+            kHighlight, 0xffffu, highlight_x, 245, metrics,
+            0xff7868d8u);
+        original_ui_text(
+            "...", highlight_x + original_ui_text_width(kHighlight),
+            245, metrics);
+    } else {
+        original_ui_text_bounded(
+            overlay->text, overlay->visible_characters,
+            68, 222, metrics);
+    }
     if (overlay->awaiting_confirm) {
-        original_ui_sprite(30, 416, 228, 28, 28, metrics);
+        original_ui_text("Next", 344, 18, metrics);
+        original_ui_sprite(30, 402, 0, 24, 24, metrics);
     }
     sceGuDisable(GU_BLEND);
 }
