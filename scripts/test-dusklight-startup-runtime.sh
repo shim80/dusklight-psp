@@ -11,10 +11,13 @@ cmake -S "$PROJECT_ROOT/test/canonical-runtime" \
   -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build "$BUILD" --target \
   startup_runtime_host_test startup_ui_host_test \
+  startup_name_entry_host_test \
+  startup_name_ui_host_test \
   startup_title_asset_host_test startup_camera_parity_host_test \
   startup_first_playable_host_test \
   frame_profiler_host_test
 "$BUILD/startup_runtime_host_test"
+"$BUILD/startup_name_entry_host_test"
 "$BUILD/frame_profiler_host_test"
 "$BUILD/startup_camera_parity_host_test"
 if [ -f "$PROJECT_ROOT/build/assets/dusklight-startup/startup_logos.dpsu" ] &&
@@ -24,6 +27,10 @@ if [ -f "$PROJECT_ROOT/build/assets/dusklight-startup/startup_logos.dpsu" ] &&
     "$PROJECT_ROOT/build/assets/dusklight-startup/startup_logos.dpsu" \
     "$PROJECT_ROOT/build/assets/dusklight-startup/title_ui.dpsu" \
     "$PROJECT_ROOT/build/assets/dusklight-startup/file_select.dpsu"
+fi
+if [ -f "$PROJECT_ROOT/build/assets/dusklight-psp/data/startup/file_select.dpsu" ]; then
+  "$BUILD/startup_name_ui_host_test" \
+    "$PROJECT_ROOT/build/assets/dusklight-psp/data/startup/file_select.dpsu"
 fi
 if [ -f "$PROJECT_ROOT/build/assets/dusklight-startup/title_room.dprm" ]; then
   "$BUILD/startup_title_asset_host_test" \

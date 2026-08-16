@@ -2342,6 +2342,71 @@ void draw_startup_channel(
     sceGuDisable(GU_BLEND);
 }
 
+const std::uint8_t* startup_record(std::uint16_t id) {
+    for (std::uint32_t index = 0;
+         index < g_startup_ui_package.record_count; ++index) {
+        const std::uint8_t* record =
+            g_startup_ui_package.bytes +
+            g_startup_ui_package.records_offset + index * 32;
+        if (read_u16(record) == id) {
+            return record;
+        }
+    }
+    return nullptr;
+}
+
+void draw_startup_record_at(
+    std::uint16_t id, int x, int y,
+    std::uint32_t color, RenderMetrics* metrics) {
+    const std::uint8_t* record = startup_record(id);
+    if (record == nullptr) {
+        return;
+    }
+    sceGuEnable(GU_TEXTURE_2D);
+    bind(g_ui);
+    sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
+    sceGuColor(color);
+    sprite(
+        x, y, read_u16(record + 8), read_u16(record + 10),
+        read_u16(record + 12), read_u16(record + 14),
+        read_u16(record + 16), read_u16(record + 18), metrics);
+}
+
+void draw_startup_text(
+    const char* text, int x, int y,
+    std::uint32_t color, RenderMetrics* metrics) {
+    if (text == nullptr) {
+        return;
+    }
+    int cursor = x;
+    for (const char* at = text; *at != '\0'; ++at) {
+        const unsigned char character =
+            static_cast<unsigned char>(*at);
+        if (character < 32 || character > 126) {
+            continue;
+        }
+        const std::uint8_t* record = startup_record(
+            static_cast<std::uint16_t>(256 + character - 32));
+        if (record == nullptr) {
+            cursor += 8;
+            continue;
+        }
+        draw_startup_record_at(
+            static_cast<std::uint16_t>(256 + character - 32),
+            cursor, y, color, metrics);
+        cursor += read_u16(record + 28);
+    }
+    sceGuColor(0xffffffffu);
+}
+
+void draw_name_entry_cell_border(
+    int x, int y, std::uint32_t color, RenderMetrics* metrics) {
+    rectangle(x, y, 25, 2, color, metrics);
+    rectangle(x, y + 24, 25, 2, color, metrics);
+    rectangle(x, y, 2, 26, color, metrics);
+    rectangle(x + 23, y, 2, 26, color, metrics);
+}
+
 }  // namespace
 
 void set_render_trace_sink(render_trace::Sink sink, void* user) {
@@ -2535,6 +2600,92 @@ bool render_startup_ui_frame_layers(
     sceGuClear(GU_COLOR_BUFFER_BIT);
     draw_startup_channel(base_channel, fade_alpha, metrics);
     draw_startup_channel(overlay_channel, fade_alpha, metrics);
+    const int bytes = sceGuFinish();
+    if (bytes < 0 || static_cast<std::uint32_t>(bytes) > g_list_bytes ||
+        sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE) < 0) {
+        return false;
+    }
+    metrics->command_bytes = static_cast<std::uint32_t>(bytes);
+    sceDisplayWaitVblankStart();
+    sceGuSwapBuffers();
+    metrics->synchronized = true;
+    ++metrics->frames;
+    return true;
+}
+
+bool render_startup_name_entry_frame(
+    const StartupNameEntryRenderInput& input,
+    RenderMetrics* metrics) {
+    if (!g_initialized || metrics == nullptr || input.heading == nullptr ||
+        input.name == nullptr || input.cursor_row >= 3 ||
+        input.cursor_column >= 13 ||
+        g_startup_ui_package.bytes == nullptr ||
+        startup_record(200) == nullptr) {
+        return false;
+    }
+    metrics->ui_draw_calls = 0;
+    g_render_trace_frame = metrics->frames;
+    sceGuStart(GU_DIRECT, g_list);
+    sceGuClearColor(0xff000000u);
+    sceGuClear(GU_COLOR_BUFFER_BIT);
+    sceGuDisable(GU_DEPTH_TEST);
+    sceGuDisable(GU_CULL_FACE);
+    sceGuEnable(GU_BLEND);
+    sceGuBlendFunc(
+        GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+    draw_startup_record_at(200, 0, 0, 0xffffffffu, metrics);
+
+    rectangle(43, 6, 394, 260, 0xb0182030u, metrics);
+    rectangle(47, 10, 386, 252, 0xd0304050u, metrics);
+    rectangle(51, 14, 378, 244, 0xe0182028u, metrics);
+    rectangle(56, 18, 368, 28, 0xd0584830u, metrics);
+    rectangle(60, 22, 360, 20, 0xe0202830u, metrics);
+    draw_startup_text(input.heading, 174, 21, 0xffd8c080u, metrics);
+
+    rectangle(103, 52, 274, 40, 0xff6c5938u, metrics);
+    rectangle(107, 56, 266, 32, 0xf0182028u, metrics);
+    draw_startup_text(input.name, 159, 60, 0xffffffffu, metrics);
+
+    constexpr int kGridX = 64;
+    constexpr int kGridY = 107;
+    constexpr int kCellStepX = 27;
+    constexpr int kCellStepY = 31;
+    for (std::uint8_t row = 0; row < 3; ++row) {
+        for (std::uint8_t column = 0; column < 13; ++column) {
+            const int x = kGridX + column * kCellStepX;
+            const int y = kGridY + row * kCellStepY;
+            rectangle(x + 2, y + 2, 21, 22, 0xd0283038u, metrics);
+            if (row < 2 || column < 10) {
+                char label[2] = {
+                    row == 0
+                        ? static_cast<char>('A' + column)
+                        : row == 1
+                            ? static_cast<char>('N' + column)
+                            : static_cast<char>('0' + column),
+                    '\0'};
+                if (input.lowercase && row < 2) {
+                    label[0] = static_cast<char>(label[0] + ('a' - 'A'));
+                }
+                draw_startup_text(label, x + 6, y + 2, 0xffffffffu, metrics);
+            }
+        }
+    }
+    draw_startup_text("SP", 337, 171, 0xffffffffu, metrics);
+    draw_startup_text("DEL", 361, 171, 0xffffffffu, metrics);
+    draw_startup_text("END", 389, 171, 0xffe0b848u, metrics);
+    draw_name_entry_cell_border(
+        kGridX + input.cursor_column * kCellStepX,
+        kGridY + input.cursor_row * kCellStepY,
+        0xfff0c050u, metrics);
+
+    draw_startup_text(
+        input.lowercase ? "abc" : "ABC", 64, 211,
+        0xffe0b848u, metrics);
+    draw_startup_text(
+        "TRIANGLE CASE   X SELECT   O DELETE   START END",
+        104, 211, 0xffd8d8d8u, metrics);
+    sceGuColor(0xffffffffu);
+    sceGuDisable(GU_BLEND);
     const int bytes = sceGuFinish();
     if (bytes < 0 || static_cast<std::uint32_t>(bytes) > g_list_bytes ||
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE) < 0) {

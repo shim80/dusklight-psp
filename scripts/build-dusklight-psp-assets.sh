@@ -73,6 +73,10 @@ prepare_tree() {
     title_logo.dprm title_logo.dptx title_logo.dpan; do
     cp -- "$STARTUP/$package" "$destination/data/startup/$package"
   done
+  python3 "$PROJECT_ROOT/tools/merge_startup_name_glyphs.py" \
+    --file-select "$destination/data/startup/file_select.dpsu" \
+    --hud "$destination/data/common/hud.dpui" \
+    --out "$destination/data/startup/file_select.dpsu"
   printf '%s\n' \
     "owner=global" \
     "source=data/common/hud.dpui" \

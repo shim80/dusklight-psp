@@ -32,6 +32,28 @@ add_executable(startup_ui_host_test
     startup_ui_host_test.cpp
     "${DUSK_PSP_ROOT}/src/startup_ui_package.cpp"
 )
+add_executable(startup_name_entry_host_test
+    startup_name_entry_host_test.cpp
+    "${DUSK_PSP_ROOT}/src/startup_name_entry.cpp"
+)
+add_executable(startup_name_ui_host_test
+    startup_name_ui_host_test.cpp
+    "${DUSK_PSP_ROOT}/src/startup_ui_package.cpp"
+)
+target_include_directories(startup_name_ui_host_test PRIVATE
+    "${DUSK_PSP_ROOT}/include"
+)
+target_compile_features(startup_name_ui_host_test PRIVATE cxx_std_20)
+target_compile_options(startup_name_ui_host_test PRIVATE
+    -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
+)
+target_include_directories(startup_name_entry_host_test PRIVATE
+    "${DUSK_PSP_ROOT}/include"
+)
+target_compile_features(startup_name_entry_host_test PRIVATE cxx_std_20)
+target_compile_options(startup_name_entry_host_test PRIVATE
+    -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
+)
 add_executable(startup_title_asset_host_test
     startup_title_asset_host_test.cpp
     "${DUSK_PSP_ROOT}/src/room_package.cpp"

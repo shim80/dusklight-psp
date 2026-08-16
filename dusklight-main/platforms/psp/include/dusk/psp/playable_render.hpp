@@ -231,6 +231,14 @@ struct StartupTitleCamera {
     float far_plane;
 };
 
+struct StartupNameEntryRenderInput {
+    const char* heading;
+    const char* name;
+    std::uint8_t cursor_row;
+    std::uint8_t cursor_column;
+    bool lowercase;
+};
+
 bool initialize_renderer(
     const PackageView& textures,
     const PackageView& ui,
@@ -250,6 +258,9 @@ bool render_startup_ui_frame_layers(
     std::uint16_t base_channel,
     std::uint16_t overlay_channel,
     std::uint8_t fade_alpha,
+    RenderMetrics* metrics);
+bool render_startup_name_entry_frame(
+    const StartupNameEntryRenderInput& input,
     RenderMetrics* metrics);
 bool initialize_startup_title_renderer(
     const startup::UiPackageView& ui,

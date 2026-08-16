@@ -47,6 +47,7 @@ add_executable(dusklight_psp
     "${DUSK_PSP_ROOT}/src/save_storage.cpp"
     "${DUSK_PSP_ROOT}/src/startup_package.cpp"
     "${DUSK_PSP_ROOT}/src/startup_ui_package.cpp"
+    "${DUSK_PSP_ROOT}/src/startup_name_entry.cpp"
     "${DUSK_PSP_ROOT}/src/startup_runtime.cpp"
     "${DUSK_PSP_ROOT}/src/startup_save_flow.cpp"
     "${DUSK_PSP_ROOT}/src/startup_route_capture.cpp"

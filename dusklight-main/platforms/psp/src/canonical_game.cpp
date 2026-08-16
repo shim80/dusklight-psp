@@ -14,6 +14,7 @@
 #include "dusk/psp/real_room_runtime.hpp"
 #include "dusk/psp/room_package.hpp"
 #include "dusk/psp/startup_save_flow.hpp"
+#include "dusk/psp/startup_name_entry.hpp"
 #include "dusk/psp/startup_route_capture.hpp"
 
 #include <pspctrl.h>
@@ -218,6 +219,26 @@ bool draw_file_select(
         9, static_cast<std::uint16_t>(10 + flow.selected_slot()),
         255, metrics);
 }
+
+bool draw_name_entry(
+    const startup::NameEntryRuntime& entry,
+    playable::RenderMetrics* metrics) {
+    playable::StartupNameEntryRenderInput input = {};
+    input.heading = entry.kind() == startup::NameEntryKind::Player
+        ? "LINK NAME" : "EPONA NAME";
+    input.name = entry.name();
+    input.cursor_row = entry.cursor_row();
+    input.cursor_column = entry.cursor_column();
+    input.lowercase = entry.lowercase();
+    return playable::render_startup_name_entry_frame(input, metrics);
+}
+
+enum class NewGameNamePhase : std::uint8_t {
+    Inactive,
+    Player,
+    Horse,
+    Complete,
+};
 
 void draw_room_error(
     const save::StartContext& start,
@@ -506,6 +527,8 @@ int run_canonical_game() {
     bool file_select_renderer_active = true;
     const bool capture_route = startup_route_capture_enabled();
     bool captured_file_select = false;
+    bool captured_player_name = false;
+    bool captured_horse_name = false;
     bool captured_gameplay = false;
 
     static CanonicalRoomPackages room_packages = {};
@@ -515,6 +538,10 @@ int run_canonical_game() {
     static playable::Runtime link_runtime = {};
     static playable::RenderMetrics render_metrics = {};
     controls::MapperState mapper = {};
+    startup::NameEntryRuntime name_entry = {};
+    NewGameNamePhase name_phase = NewGameNamePhase::Inactive;
+    char selected_player_name[
+        startup::NameEntryRuntime::kMaximumNameBytes + 1] = {};
     FirstPlayableControlProof control_proof = {};
     bool gameplay_active = false;
     bool actor_system_active = false;
@@ -546,8 +573,13 @@ int run_canonical_game() {
         sample.buttons = pad.Buttons;
         sample.analog_x = pad.Lx;
         sample.analog_y = pad.Ly;
+        const std::uint32_t previous_buttons = mapper.previous_buttons;
         const playable::Input input =
             controls::map_gameplay_input(sample, &mapper);
+        const auto pressed = [&](std::uint32_t mask) {
+            return (pad.Buttons & mask) != 0 &&
+                   (previous_buttons & mask) == 0;
+        };
         const bool route_confirm =
             capture_route && captured_file_select &&
             flow.phase() == startup::SaveFlowPhase::FileSelect;
@@ -568,8 +600,83 @@ int run_canonical_game() {
             }
         }
 
+        bool initialized_name_this_frame = false;
         if (!gameplay_active && !terminal_room_error &&
-            flow.phase() == startup::SaveFlowPhase::Transition) {
+            flow.phase() == startup::SaveFlowPhase::Transition &&
+            flow.selected_action() == save::FileSelectAction::NewGame &&
+            name_phase == NewGameNamePhase::Inactive) {
+            name_entry.initialize(startup::NameEntryKind::Player, "Link");
+            name_phase = NewGameNamePhase::Player;
+            initialized_name_this_frame = true;
+            if (!draw_name_entry(name_entry, &file_select_metrics)) {
+                log_error("player name entry render failed", -24);
+                terminal_room_error = true;
+            } else if (capture_route) {
+                captured_player_name = capture_startup_route_frame(
+                    "startup-player-name.5650");
+            }
+        }
+
+        if (!gameplay_active && !terminal_room_error &&
+            (name_phase == NewGameNamePhase::Player ||
+             name_phase == NewGameNamePhase::Horse) &&
+            !initialized_name_this_frame) {
+            const bool route_finish = capture_route &&
+                (name_phase == NewGameNamePhase::Player
+                     ? captured_player_name
+                     : captured_horse_name);
+            startup::NameEntryInput name_input = {};
+            name_input.left = pressed(PSP_CTRL_LEFT);
+            name_input.right = pressed(PSP_CTRL_RIGHT);
+            name_input.up = input.up_pressed;
+            name_input.down = input.down_pressed;
+            name_input.confirm = input.action_pressed;
+            name_input.erase = input.cancel_pressed;
+            name_input.toggle_case = pressed(PSP_CTRL_TRIANGLE);
+            name_input.finish = input.pause_pressed || route_finish;
+            const bool changed =
+                name_input.left || name_input.right || name_input.up ||
+                name_input.down || name_input.confirm || name_input.erase ||
+                name_input.toggle_case || name_input.finish;
+            if (changed && !name_entry.tick(name_input)) {
+                log_error("name entry update failed", -25);
+                terminal_room_error = true;
+            } else if (name_entry.confirmed()) {
+                if (name_phase == NewGameNamePhase::Player) {
+                    std::memcpy(
+                        selected_player_name, name_entry.name(),
+                        name_entry.length() + 1);
+                    name_entry.initialize(
+                        startup::NameEntryKind::Horse, "Epona");
+                    name_phase = NewGameNamePhase::Horse;
+                    if (!draw_name_entry(
+                            name_entry, &file_select_metrics)) {
+                        log_error("horse name entry render failed", -26);
+                        terminal_room_error = true;
+                    } else if (capture_route) {
+                        captured_horse_name = capture_startup_route_frame(
+                            "startup-horse-name.5650");
+                    }
+                } else {
+                    char message[96] = {};
+                    std::snprintf(
+                        message, sizeof(message),
+                        "DUSKLIGHT_PSP_NAME_ENTRY_OK player=%s horse=%s",
+                        selected_player_name, name_entry.name());
+                    log(message);
+                    name_phase = NewGameNamePhase::Complete;
+                }
+            } else if (changed &&
+                       !draw_name_entry(name_entry, &file_select_metrics)) {
+                log_error("name entry redraw failed", -27);
+                terminal_room_error = true;
+            }
+        }
+
+        if (!gameplay_active && !terminal_room_error &&
+            flow.phase() == startup::SaveFlowPhase::Transition &&
+            (flow.selected_action() != save::FileSelectAction::NewGame ||
+             name_phase == NewGameNamePhase::Complete)) {
             if (!flow.tick({false, false, false, false, false, true})) {
                 log_error("new game transition failed", -24);
                 terminal_room_error = true;

@@ -60,7 +60,7 @@ UiPackageError validate_startup_ui(
     const std::uint32_t atlas_bytes = u32(bytes + 44);
     if (width == 0 || height == 0 || width > 512 || height > 512 ||
         (width & 7u) != 0 || (height & 7u) != 0 ||
-        u32(bytes + 24) != 2 || count == 0 || count > 32 ||
+        u32(bytes + 24) != 2 || count == 0 || count > 128 ||
         table != 128 || stride != 32 ||
         table + count * stride > size ||
         atlas < table + count * stride ||
