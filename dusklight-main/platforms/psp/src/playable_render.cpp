@@ -2400,11 +2400,12 @@ void draw_startup_text(
 }
 
 void draw_name_entry_cell_border(
-    int x, int y, std::uint32_t color, RenderMetrics* metrics) {
-    rectangle(x, y, 25, 2, color, metrics);
-    rectangle(x, y + 24, 25, 2, color, metrics);
-    rectangle(x, y, 2, 26, color, metrics);
-    rectangle(x + 23, y, 2, 26, color, metrics);
+    int x, int y, int width, int height,
+    std::uint32_t color, RenderMetrics* metrics) {
+    rectangle(x, y, width, 2, color, metrics);
+    rectangle(x, y + height - 2, width, 2, color, metrics);
+    rectangle(x, y, 2, height, color, metrics);
+    rectangle(x + width - 2, y, 2, height, color, metrics);
 }
 
 }  // namespace
@@ -2640,50 +2641,76 @@ bool render_startup_name_entry_frame(
     rectangle(51, 14, 378, 244, 0xe0182028u, metrics);
     rectangle(56, 18, 368, 28, 0xd0584830u, metrics);
     rectangle(60, 22, 360, 20, 0xe0202830u, metrics);
-    draw_startup_text(input.heading, 174, 21, 0xffd8c080u, metrics);
+    draw_startup_text(input.heading, 164, 21, 0xffd8c080u, metrics);
 
     rectangle(103, 52, 274, 40, 0xff6c5938u, metrics);
     rectangle(107, 56, 266, 32, 0xf0182028u, metrics);
-    draw_startup_text(input.name, 159, 60, 0xffffffffu, metrics);
+    std::uint8_t name_length = 0;
+    while (input.name[name_length] != '\0' && name_length < 8) {
+        ++name_length;
+    }
+    const int name_start = 240 - static_cast<int>(name_length) * 14;
+    for (std::uint8_t index = 0; index < name_length; ++index) {
+        char character[2] = {input.name[index], '\0'};
+        draw_startup_text(
+            character, name_start + index * 28, 60,
+            0xffffffffu, metrics);
+    }
 
     constexpr int kGridX = 64;
     constexpr int kGridY = 107;
     constexpr int kCellStepX = 27;
     constexpr int kCellStepY = 31;
     for (std::uint8_t row = 0; row < 3; ++row) {
-        for (std::uint8_t column = 0; column < 13; ++column) {
+        const std::uint8_t columns = row == 2 ? 10 : 13;
+        for (std::uint8_t column = 0; column < columns; ++column) {
             const int x = kGridX + column * kCellStepX;
             const int y = kGridY + row * kCellStepY;
             rectangle(x + 2, y + 2, 21, 22, 0xd0283038u, metrics);
-            if (row < 2 || column < 10) {
-                char label[2] = {
-                    row == 0
-                        ? static_cast<char>('A' + column)
-                        : row == 1
-                            ? static_cast<char>('N' + column)
-                            : static_cast<char>('0' + column),
-                    '\0'};
-                if (input.lowercase && row < 2) {
-                    label[0] = static_cast<char>(label[0] + ('a' - 'A'));
-                }
-                draw_startup_text(label, x + 6, y + 2, 0xffffffffu, metrics);
+            char label[2] = {
+                row == 0
+                    ? static_cast<char>('A' + column)
+                    : row == 1
+                        ? static_cast<char>('N' + column)
+                        : static_cast<char>('0' + column),
+                '\0'};
+            if (input.lowercase && row < 2) {
+                label[0] = static_cast<char>(label[0] + ('a' - 'A'));
             }
+            draw_startup_text(label, x + 6, y + 2, 0xffffffffu, metrics);
         }
     }
-    draw_startup_text("SP", 337, 171, 0xffffffffu, metrics);
-    draw_startup_text("DEL", 361, 171, 0xffffffffu, metrics);
-    draw_startup_text("END", 389, 171, 0xffe0b848u, metrics);
-    draw_name_entry_cell_border(
-        kGridX + input.cursor_column * kCellStepX,
-        kGridY + input.cursor_row * kCellStepY,
-        0xfff0c050u, metrics);
+    constexpr int kButtonY = 208;
+    constexpr int kButtonX[3] = {64, 195, 326};
+    constexpr const char* kButtonLabel[3] = {"SPACE", "DELETE", "END"};
+    for (std::uint8_t button = 0; button < 3; ++button) {
+        rectangle(kButtonX[button], kButtonY, 90, 27, 0xff5c5c58u, metrics);
+        rectangle(
+            kButtonX[button] + 3, kButtonY + 3,
+            84, 21, 0xff282c30u, metrics);
+        draw_startup_text(
+            kButtonLabel[button], kButtonX[button] + 14,
+            kButtonY + 3,
+            button == 2 ? 0xffe0b848u : 0xffffffffu, metrics);
+    }
+    if (input.cursor_row == 2 && input.cursor_column >= 10) {
+        draw_name_entry_cell_border(
+            kButtonX[input.cursor_column - 10], kButtonY, 90, 27,
+            0xfff0c050u, metrics);
+    } else {
+        draw_name_entry_cell_border(
+            kGridX + input.cursor_column * kCellStepX,
+            kGridY + input.cursor_row * kCellStepY,
+            25, 26,
+            0xfff0c050u, metrics);
+    }
 
     draw_startup_text(
-        input.lowercase ? "abc" : "ABC", 64, 211,
+        input.lowercase ? "abc" : "ABC", 64, 239,
         0xffe0b848u, metrics);
     draw_startup_text(
-        "TRIANGLE CASE   X SELECT   O DELETE   START END",
-        104, 211, 0xffd8d8d8u, metrics);
+        "TRI CASE   X OK   O DELETE",
+        112, 239, 0xffd8d8d8u, metrics);
     sceGuColor(0xffffffffu);
     sceGuDisable(GU_BLEND);
     const int bytes = sceGuFinish();

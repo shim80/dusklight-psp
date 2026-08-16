@@ -225,7 +225,7 @@ bool draw_name_entry(
     playable::RenderMetrics* metrics) {
     playable::StartupNameEntryRenderInput input = {};
     input.heading = entry.kind() == startup::NameEntryKind::Player
-        ? "LINK NAME" : "EPONA NAME";
+        ? "Enter name" : "Enter horse name";
     input.name = entry.name();
     input.cursor_row = entry.cursor_row();
     input.cursor_column = entry.cursor_column();
