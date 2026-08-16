@@ -197,18 +197,42 @@ water UV scroll, bloom or global composite is claimed by this checkpoint.
 
 Detailed report: `docs/reports/207-safe-link-wrapped-lighting-ppsspp.md`.
 
+## Link and Epona name-entry checkpoint
+
+New-game startup no longer jumps directly from file select to F_SP108. It now includes
+interactive Link and Epona name screens with source Rodan text, D-pad navigation,
+Cross selection, Circle deletion, Triangle case switching and Start completion. The
+packaged startup route is now:
+
+`team logo -> F_SP102/title -> START -> file select -> Link name -> Epona name -> F_SP108 gameplay`
+
+The source-derived file-select background is retained. A deterministic offline merger
+copies the 63 required glyphs from the source HUD DPUI and repacks them with the file
+select in the existing 512x512 DPSU atlas. The PC stone frame, ornamental interior and
+accented grid remain bounded approximations rather than pixel parity.
+
+Final PPSSPP request `startup-name-entry-v3` completed in 15,689 ms with eight RGB565
+captures and valid route metrics/marker. The final Allegrex EBOOT SHA-256 is
+`54225746baf7711f6e5a5c164b068820b33795a632847806eb101c2c9c28e040`.
+The accepted Link shading, source fog, alpha foliage and water composition were not
+changed.
+
+`demo01_01` is still absent, and entered names are not yet persisted in the save-bank
+schema. Detailed report:
+`docs/reports/208-link-epona-name-entry-ppsspp.md`.
+
 ## Active task
 
 Close the first release path in the canonical EBOOT while increasing visible fidelity where the source assets are available:
 
-`Dusklight logo -> title -> START -> file select/save -> F_SP108 first playable -> PSP controls`
+`Dusklight logo -> title -> START -> file select -> Link/Epona names -> F_SP108 first playable -> PSP controls`
 
 Immediate targets:
 
-1. add a compact, bounds-checked source-BTK material-animation binding and validate slow F_SP108 water UV motion;
-2. capture the exact desktop reference for the same six route checkpoints;
-3. address the remaining title TEV/UV/material-animation defects without exceeding the bounded PSP pass budget;
-4. improve source-faithful file-select typography/content, then fog, far-background and scene layers;
+1. restore the missing `demo01_01` F_SP108 intro between Epona confirmation and gameplay;
+2. address the remaining title TEV/UV/material-animation defects without exceeding the bounded PSP pass budget;
+3. persist the chosen Link/Epona names and extend the bounded menu layout toward the PC BLO;
+4. add a compact, bounds-checked source-BTK material-animation binding and validate slow F_SP108 water UV motion;
 5. preserve the accepted wrapped Link shading and the already-proven save/control/gameplay route.
 
 ## Explicitly not closed

@@ -226,11 +226,30 @@ route passed with team logo, title, file select and F_SP108 gameplay captures. M
 alpha foliage, source fog and the accepted alpha water second pass were not changed.
 No water animation, bloom or global composite is implemented yet.
 
+## 7e. Link and Epona name-entry checkpoint
+
+Resume from `docs/reports/208-link-epona-name-entry-ppsspp.md`. New-game startup now
+contains interactive Link and Epona name states between file select and F_SP108. The
+screen uses the source-derived file-select background and source Rodan glyphs merged
+deterministically into the existing 512x512 startup atlas. The PC BLO ornaments and
+accented character grid remain approximated.
+
+Final local request `startup-name-entry-v3` passed in pinned PPSSPP with OpenGL and the
+hardware PSP renderer. It produced eight route captures, valid metrics and
+`DUSKLIGHT_PSP_STARTUP_ROUTE_CAPTURE_OK`. Final EBOOT SHA-256:
+
+`54225746baf7711f6e5a5c164b068820b33795a632847806eb101c2c9c28e040`
+
+The runtime defaults are `Link` and `Epona`; D-pad/Cross/Circle/Triangle/Start provide
+navigation, selection, deletion, case switching and completion. Existing saves bypass
+the two screens. Entered names are not yet serialized, and `demo01_01` is still missing.
+The next vertical startup slice should restore that intro before direct gameplay handoff.
+
 ## 8. Immediate next work
 
-1. design an append-only, versioned and bounds-checked compact material-animation binding sourced from BTK;
-2. use it for slow multi-direction F_SP108 water UV motion while preserving the accepted alpha second pass;
-3. capture the same F_SP102/title/F_SP108 views in PSP and Dusklight PC and rank visible deltas;
+1. restore a bounded `demo01_01` F_SP108 intro before the gameplay handoff;
+2. persist the selected Link/Epona names in a versioned save extension;
+3. design an append-only, versioned and bounds-checked compact material-animation binding sourced from BTK;
 4. fix the largest remaining title/material/depth/UV errors without exceeding two regular passes;
 5. rerun actual PPSSPP control acceptance and physical-PSP lighting timing.
 
