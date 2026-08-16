@@ -221,6 +221,26 @@ changed.
 schema. Detailed report:
 `docs/reports/208-link-epona-name-entry-ppsspp.md`.
 
+## Bounded F_SP108 new-game intro checkpoint
+
+New games now enter a two-shot F_SP108 intro after Epona confirmation instead of
+jumping directly to gameplay. The intro uses the real F_SP108 room, Link runtime,
+source environment and Rodan font, hides the gameplay HUD, presents two opening lines,
+and then restores the HUD on the first playable frame. Cross advances, Start skips and
+each phase has a 270-frame fail-safe.
+
+Final PPSSPP request `startup-intro-v4` completed in 15,663 ms with ten RGB565
+captures, valid route metrics and marker. The final Allegrex EBOOT SHA-256 is
+`d88e29b0bb06192da9d49ae9bc8c3f02500892f0ae21702dfc4e1384ac291f4e`.
+The route preserves the accepted wrapped Link shading, source fog, alpha foliage and
+bounded water composition.
+
+This is a bounded narrative reconstruction, not exact `demo01_01` parity: Rusl,
+source event staging and cutscene animation are still absent. The 512x192 HUD atlas is
+now padded to a valid 512x256 PSP texture surface in EDRAM, which fixes dialogue glyph
+sampling while remaining inside the established budget. Detailed report:
+`docs/reports/209-fsp108-new-game-intro-ppsspp.md`.
+
 ## Active task
 
 Close the first release path in the canonical EBOOT while increasing visible fidelity where the source assets are available:
@@ -229,8 +249,8 @@ Close the first release path in the canonical EBOOT while increasing visible fid
 
 Immediate targets:
 
-1. restore the missing `demo01_01` F_SP108 intro between Epona confirmation and gameplay;
-2. address the remaining title TEV/UV/material-animation defects without exceeding the bounded PSP pass budget;
+1. restore the missing F_SP102 `demo38` and animated-title staging;
+2. extend the bounded F_SP108 intro toward exact `demo01_01` actor/event parity;
 3. persist the chosen Link/Epona names and extend the bounded menu layout toward the PC BLO;
 4. add a compact, bounds-checked source-BTK material-animation binding and validate slow F_SP108 water UV motion;
 5. preserve the accepted wrapped Link shading and the already-proven save/control/gameplay route.

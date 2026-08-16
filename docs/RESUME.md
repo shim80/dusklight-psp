@@ -245,12 +245,31 @@ navigation, selection, deletion, case switching and completion. Existing saves b
 the two screens. Entered names are not yet serialized, and `demo01_01` is still missing.
 The next vertical startup slice should restore that intro before direct gameplay handoff.
 
+## 7f. Bounded F_SP108 new-game intro checkpoint
+
+Resume from `docs/reports/209-fsp108-new-game-intro-ppsspp.md`. New games now pass
+through wide and close-up F_SP108 intro shots after Epona naming. The real room, Link,
+environment, accepted wrapped lighting and bounded alpha/water passes are reused;
+Rodan text is rendered in a PSP message pane. Cross advances, Start skips and the
+270-frame phase limit keeps route automation finite. Existing saves bypass the intro.
+
+Final local request `startup-intro-v4` passed in pinned PPSSPP with OpenGL and the
+hardware PSP renderer. It produced ten route captures, valid metrics and
+`DUSKLIGHT_PSP_STARTUP_ROUTE_CAPTURE_OK`. Final EBOOT SHA-256:
+
+`d88e29b0bb06192da9d49ae9bc8c3f02500892f0ae21702dfc4e1384ac291f4e`
+
+The HUD atlas is logically 512x192 but is now padded to a 512x256 power-of-two EDRAM
+surface before binding, fixing the message-glyph corruption observed in the first
+replays. Rusl, source event staging, cutscene animation and exact camera/message-pane
+parity remain open. Entered names are still not persisted.
+
 ## 8. Immediate next work
 
-1. restore a bounded `demo01_01` F_SP108 intro before the gameplay handoff;
-2. persist the selected Link/Epona names in a versioned save extension;
-3. design an append-only, versioned and bounds-checked compact material-animation binding sourced from BTK;
-4. fix the largest remaining title/material/depth/UV errors without exceeding two regular passes;
+1. restore the F_SP102 `demo38` and animated-title staging;
+2. add Rusl/source event staging and cutscene animation to approach exact `demo01_01` parity;
+3. persist the selected Link/Epona names in a versioned save extension;
+4. design an append-only, versioned and bounds-checked compact material-animation binding sourced from BTK;
 5. rerun actual PPSSPP control acceptance and physical-PSP lighting timing.
 
 ## 9. Heart Piece / chest track
