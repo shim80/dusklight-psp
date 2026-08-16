@@ -207,14 +207,32 @@ needs source-backed TEV/UV/BPK/BRK/BTK work. Do not claim desktop parity.
 Resume from `docs/reports/206-startup-route-file-select-ppsspp.md`, then obtain an
 exact desktop capture for the same checkpoints before the next visual pass.
 
+## 7d. Safe Link wrapped-lighting checkpoint
+
+Resume from `docs/reports/207-safe-link-wrapped-lighting-ppsspp.md` for the latest
+renderer state. `RenderProfile::CandidateGame` now selects
+`SafeWrappedDiffuse`; `SourceApprox` remains diagnostic-only because its source
+magnitudes made Link almost black.
+
+Accepted constants are ambient `0.58`, key `0.32`, wrap bias `0.35` and minimum
+illumination `0.52`. The renderer converts the F_SP108 world light into Link model
+space with inverse yaw, uses already-normalized skinned normals and modulates the source
+texture with a 64-level/27-material color LUT. PPSSPP first-frame cost was 4,339 us;
+physical-PSP timing is open. The subtle rim variant cost 8,196 us and was rejected for
+insufficient visible benefit.
+
+Local A/B images and commercial-derived packages remain ignored. The complete reduced
+route passed with team logo, title, file select and F_SP108 gameplay captures. MPV1,
+alpha foliage, source fog and the accepted alpha water second pass were not changed.
+No water animation, bloom or global composite is implemented yet.
+
 ## 8. Immediate next work
 
-1. replay the reduced `Dusklight logo -> title -> START -> save -> gameplay` path using the authorized workspace asset set;
-2. capture the same F_SP102/title/F_SP108 views in PSP and Dusklight PC and rank visible deltas;
-3. fix the largest material/alpha/depth/UV errors first, preserving the two-pass PSP budget unless evidence justifies another bounded specialization;
-4. focus next on water, fog, background and scene layers in F_SP102/F_SP108;
-5. implement source-backed BPK/BRK/BTK material animation where it materially affects title/scene fidelity;
-6. rerun control acceptance so camera/action/pause/resume remain intact after rendering changes.
+1. design an append-only, versioned and bounds-checked compact material-animation binding sourced from BTK;
+2. use it for slow multi-direction F_SP108 water UV motion while preserving the accepted alpha second pass;
+3. capture the same F_SP102/title/F_SP108 views in PSP and Dusklight PC and rank visible deltas;
+4. fix the largest remaining title/material/depth/UV errors without exceeding two regular passes;
+5. rerun actual PPSSPP control acceptance and physical-PSP lighting timing.
 
 ## 9. Heart Piece / chest track
 

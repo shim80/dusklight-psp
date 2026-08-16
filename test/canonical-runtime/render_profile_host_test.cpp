@@ -22,7 +22,8 @@ int main() {
         diagnostic.lighting == playable::LightingMode::Off &&
         diagnostic.fog == playable::FogMode::Off &&
         diagnostic.shadows == playable::ShadowMode::Off &&
-        candidate.lighting == playable::LightingMode::SourceApprox &&
+        candidate.lighting ==
+            playable::LightingMode::SafeWrappedDiffuse &&
         candidate.fog == playable::FogMode::Source &&
         candidate.shadows == playable::ShadowMode::ProjectedLink &&
         std::strcmp(

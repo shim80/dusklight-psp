@@ -6,6 +6,7 @@
 #include "dusk/psp/canonical_room_loader.hpp"
 #include "dusk/psp/canonical_startup_loader.hpp"
 #include "dusk/psp/first_playable_controls.hpp"
+#include "dusk/psp/link_lighting.hpp"
 #include "dusk/psp/platform.hpp"
 #include "dusk/psp/playable_render.hpp"
 #include "dusk/psp/playable_runtime.hpp"
@@ -43,6 +44,83 @@ constexpr std::uint32_t kFrameDelayMicroseconds = 33333;
 constexpr std::uint32_t kCommandListBytes = 256 * 1024;
 alignas(16) std::uint8_t g_command_list[kCommandListBytes] = {};
 static environment::PspEnvironmentRuntime g_environment_runtime = {};
+static playable::LightingMode g_link_lighting_mode =
+    playable::LightingMode::SafeWrappedDiffuse;
+
+const char* link_lighting_mode_name(playable::LightingMode mode) {
+    switch (mode) {
+    case playable::LightingMode::Off: return "baseline";
+    case playable::LightingMode::SafeAmbient: return "ambient";
+    case playable::LightingMode::SafeWrappedDiffuse: return "wrapped";
+    case playable::LightingMode::SafeWrappedDiffuseRim: return "final";
+    default: return "unsupported";
+    }
+}
+
+void load_link_lighting_mode() {
+    g_link_lighting_mode =
+        playable::LightingMode::SafeWrappedDiffuse;
+    char path[256] = {};
+    if (!make_game_path(
+            "DUSKLIGHT.LINK.SHADING", path, sizeof(path))) {
+        return;
+    }
+    char value[16] = {};
+    std::uint32_t size = 0;
+    if (!read_file(path, value, sizeof(value), &size)) {
+        return;
+    }
+    const auto matches = [&](const char* expected) {
+        const std::size_t length = std::strlen(expected);
+        return (size == length ||
+                (size == length + 1 && value[length] == '\n')) &&
+               std::memcmp(value, expected, length) == 0;
+    };
+    if (matches("baseline")) {
+        g_link_lighting_mode = playable::LightingMode::Off;
+    } else if (matches("ambient")) {
+        g_link_lighting_mode = playable::LightingMode::SafeAmbient;
+    } else if (matches("wrapped")) {
+        g_link_lighting_mode =
+            playable::LightingMode::SafeWrappedDiffuse;
+    } else if (matches("final")) {
+        g_link_lighting_mode =
+            playable::LightingMode::SafeWrappedDiffuseRim;
+    }
+}
+
+void write_link_lighting_metrics(
+    const playable::RenderMetrics& metrics) {
+    char path[256] = {};
+    char contents[512] = {};
+    const int length = std::snprintf(
+        contents, sizeof(contents),
+        "mode=link_shading\n"
+        "lighting_mode=%s\n"
+        "lighting_cpu_us=%lu\n"
+        "vertex_luminance_min=%.6f\n"
+        "vertex_luminance_mean=%.6f\n"
+        "vertex_luminance_max=%.6f\n"
+        "safe_link_visible=%s\n"
+        "wrap_bias=%.2f\n"
+        "minimum_illumination=%.2f\n"
+        "error_code=0\n",
+        link_lighting_mode_name(g_link_lighting_mode),
+        static_cast<unsigned long>(metrics.lighting_cpu_us),
+        metrics.link_lighting_luminance_min,
+        metrics.link_lighting_luminance_mean,
+        metrics.link_lighting_luminance_max,
+        metrics.safe_link_visible ? "true" : "false",
+        playable::kSafeLinkLighting.wrap_bias,
+        playable::kSafeLinkLighting.minimum_illumination);
+    if (length <= 0 ||
+        static_cast<std::size_t>(length) >= sizeof(contents) ||
+        !make_game_path("LINK.SHADING.METRICS", path, sizeof(path))) {
+        return;
+    }
+    write_file(
+        path, contents, static_cast<std::uint32_t>(length));
+}
 
 void write_u16(std::uint8_t* output, std::uint16_t value) {
     output[0] = static_cast<std::uint8_t>(value);
@@ -215,8 +293,11 @@ playable::RealRoomRenderInput make_render_input(
         ? &g_environment_runtime.material
         : nullptr;
     output.shadows = nullptr;
-    output.render_profile = playable::RenderProfile::KnownGoodUnlit;
-    output.lighting_mode = playable::LightingMode::Off;
+    output.render_profile =
+        g_link_lighting_mode == playable::LightingMode::Off
+            ? playable::RenderProfile::KnownGoodUnlit
+            : playable::RenderProfile::CandidateGame;
+    output.lighting_mode = g_link_lighting_mode;
     output.fog_mode = playable::FogMode::Source;
     output.shadow_mode = playable::ShadowMode::Off;
     return output;
@@ -383,6 +464,7 @@ int run_canonical_game() {
 
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
+    load_link_lighting_mode();
 
     char save_path[256] = {};
     if (!make_game_path("dusklight-save.bin", save_path, sizeof(save_path))) {
@@ -567,6 +649,7 @@ int run_canonical_game() {
                         "stage=F_SP108 room=1 start=21 actors=9 "
                         "render=game_alpha_source_fog frame=1");
                     first_render_proven = true;
+                    write_link_lighting_metrics(render_metrics);
                     if (capture_route && !captured_gameplay) {
                         captured_gameplay = capture_startup_route_frame(
                             "startup-gameplay.5650");

@@ -174,6 +174,29 @@ open; this checkpoint is route/visual evidence, not PC parity.
 
 Detailed report: `docs/reports/206-startup-route-file-select-ppsspp.md`.
 
+## Safe Link shading framebuffer checkpoint
+
+The canonical F_SP108 game profile now replaces the rejected `SourceApprox` path with
+a controlled per-vertex wrapped diffuse approximation. Link source base/emissive
+colors are modulated by normalized F_SP108 ambient/key chroma using ambient strength
+`0.58`, key strength `0.32`, wrap bias `0.35` and a minimum illumination floor of
+`0.52`. Skinned model-space normals and the inverse-yaw world-to-model light transform
+were audited before tuning.
+
+Four identical PPSSPP startup routes compared unlit, ambient-only, wrapped and
+wrapped-plus-rim output. The accepted wrapped path keeps Link visible with measured
+vertex luminance `0.5349 / 0.6273 / 0.7863` (min/mean/max). The rim was rejected: its
+framebuffer change was too small relative to its per-vertex view-normalization cost.
+The final 64-level, 27-material LUT implementation measured 4,339 us on the first
+PPSSPP gameplay frame, down from 29,804 us for the initial implementation. This is
+emulator timing, not a physical-PSP FPS claim.
+
+The six-stage reduced startup route, source fog, alpha foliage, alpha water/foam and
+MPV1 maximum-two-pass behavior remain intact. No MPV1 revision, material animation,
+water UV scroll, bloom or global composite is claimed by this checkpoint.
+
+Detailed report: `docs/reports/207-safe-link-wrapped-lighting-ppsspp.md`.
+
 ## Active task
 
 Close the first release path in the canonical EBOOT while increasing visible fidelity where the source assets are available:
@@ -182,11 +205,11 @@ Close the first release path in the canonical EBOOT while increasing visible fid
 
 Immediate targets:
 
-1. capture the exact desktop reference for the same six route checkpoints;
-2. address the remaining title TEV/UV/material-animation defects without exceeding the bounded PSP pass budget;
-3. improve source-faithful file-select typography/content, then fog, far-background and scene layers;
-4. preserve the already-proven save/control/gameplay route;
-5. extend title/scene material animation only with source-backed BPK/BRK/BTK behavior.
+1. add a compact, bounds-checked source-BTK material-animation binding and validate slow F_SP108 water UV motion;
+2. capture the exact desktop reference for the same six route checkpoints;
+3. address the remaining title TEV/UV/material-animation defects without exceeding the bounded PSP pass budget;
+4. improve source-faithful file-select typography/content, then fog, far-background and scene layers;
+5. preserve the accepted wrapped Link shading and the already-proven save/control/gameplay route.
 
 ## Explicitly not closed
 

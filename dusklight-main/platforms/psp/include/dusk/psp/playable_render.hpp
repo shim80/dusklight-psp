@@ -22,6 +22,9 @@ enum class RenderProfile : std::uint8_t {
 
 enum class LightingMode : std::uint8_t {
     SourceApprox,
+    SafeAmbient,
+    SafeWrappedDiffuse,
+    SafeWrappedDiffuseRim,
     Off,
     Debug,
     WhiteAmbient,
@@ -55,7 +58,7 @@ struct RenderProfileConfig {
 constexpr RenderProfileConfig render_profile_config(RenderProfile profile) {
     return profile == RenderProfile::CandidateGame
         ? RenderProfileConfig{
-              LightingMode::SourceApprox,
+              LightingMode::SafeWrappedDiffuse,
               FogMode::Source,
               ShadowMode::ProjectedLink}
         : RenderProfileConfig{
@@ -140,6 +143,10 @@ struct RenderMetrics {
     bool color_channel_mapping_valid;
     bool light_transform_valid;
     bool source_approx_link_visible;
+    bool safe_link_visible;
+    float link_lighting_luminance_min;
+    float link_lighting_luminance_mean;
+    float link_lighting_luminance_max;
     bool actor_bucket_state_applied;
     std::uint32_t ge_submit_us;
     std::uint32_t ge_sync_us;

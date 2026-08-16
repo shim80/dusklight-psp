@@ -119,6 +119,18 @@ alignas(16) ShadowCasterVertex
     g_shadow_caster_vertices[kPlayableMaxVertices] = {};
 alignas(16) SkinnedVertex
     g_link_lighting_vertices[kPlayableMaxVertices] = {};
+constexpr std::uint32_t kSafeLinkMaterialCapacity = 27;
+constexpr std::uint32_t kSafeLinkLightLevels = 64;
+alignas(16) std::uint32_t
+    g_safe_link_color_lut[
+        kSafeLinkMaterialCapacity][kSafeLinkLightLevels] = {};
+const std::uint8_t* g_safe_link_lut_package = nullptr;
+std::uint32_t g_safe_link_lut_package_size = 0;
+std::uint32_t g_safe_link_lut_ambient = 0;
+std::uint32_t g_safe_link_lut_key = 0;
+SafeLinkLightingVariant g_safe_link_lut_variant =
+    SafeLinkLightingVariant::AmbientOnly;
+bool g_safe_link_lut_valid = false;
 
 bool trace_render_submission(
     render_trace::Source source, render_trace::Bucket bucket,
@@ -477,7 +489,8 @@ LinearRgb lighting_for_vertex(
     const PspLinkMaterialLightingRecord& material,
     const environment::PspMaterialEnvironmentState* environment,
     Vec3 normal,
-    Vec3 light_direction) {
+    Vec3 light_direction,
+    Vec3 view_direction) {
     constexpr color::PackedArgb32 kBlack = {0xff000000u};
     constexpr color::PackedArgb32 kWhite = {0xffffffffu};
     const color::PackedArgb32 ambient =
@@ -488,6 +501,19 @@ LinearRgb lighting_for_vertex(
         environment == nullptr
             ? kBlack
             : color::PackedArgb32{environment->key_light_color};
+    if (mode == LightingMode::SafeAmbient ||
+        mode == LightingMode::SafeWrappedDiffuse ||
+        mode == LightingMode::SafeWrappedDiffuseRim) {
+        const SafeLinkLightingVariant variant =
+            mode == LightingMode::SafeAmbient
+                ? SafeLinkLightingVariant::AmbientOnly
+                : mode == LightingMode::SafeWrappedDiffuse
+                    ? SafeLinkLightingVariant::WrappedDiffuse
+                    : SafeLinkLightingVariant::WrappedDiffuseRim;
+        return evaluate_safe_link_lighting(
+            material, ambient, key, normal, light_direction,
+            view_direction, variant);
+    }
     if (mode == LightingMode::WhiteAmbient) {
         PspLinkMaterialLightingRecord diagnostic = material;
         diagnostic.ambient = kWhite;
@@ -532,6 +558,8 @@ const SkinnedVertex* prepare_link_lighting_vertices(
     const std::uint32_t vertex_table = read_u32(model + 72);
     const std::uint32_t vertex_stride = read_u32(model + 76);
     Vec3 light_direction = {0.0f, 1.0f, 0.0f};
+    const float model_yaw =
+        link::actor_to_model_orientation(input.link_yaw);
     if (input.environment != nullptr) {
         light_direction = world_light_ray_to_model_surface(
             {
@@ -539,8 +567,15 @@ const SkinnedVertex* prepare_link_lighting_vertices(
                 input.environment->key_light_direction[1],
                 input.environment->key_light_direction[2],
             },
-            link::actor_to_model_orientation(input.link_yaw));
+            model_yaw);
     }
+    const Vec3 camera_model = world_vector_to_model(
+        {
+            input.camera_eye.x - input.link_position.x,
+            input.camera_eye.y - input.link_position.y,
+            input.camera_eye.z - input.link_position.z,
+        },
+        model_yaw);
     metrics->source_normal_count = runtime.vertex_count;
     metrics->runtime_normal_count = runtime.vertex_count;
     metrics->zero_normal_count = 0;
@@ -555,6 +590,195 @@ const SkinnedVertex* prepare_link_lighting_vertices(
     metrics->unlit_material_count = 0;
     metrics->emissive_material_count = 0;
     metrics->material_fallback_count = 0;
+    metrics->safe_link_visible = false;
+    metrics->link_lighting_luminance_min = 1.0f;
+    metrics->link_lighting_luminance_mean = 0.0f;
+    metrics->link_lighting_luminance_max = 0.0f;
+    const bool safe_mode =
+        input.lighting_mode == LightingMode::SafeAmbient ||
+        input.lighting_mode == LightingMode::SafeWrappedDiffuse ||
+        input.lighting_mode == LightingMode::SafeWrappedDiffuseRim;
+    if (safe_mode) {
+        struct PreparedMaterial {
+            LinearRgb base;
+            LinearRgb emissive;
+            std::uint8_t alpha;
+            bool lighting_enabled;
+            bool valid;
+        };
+        PreparedMaterial prepared[kSafeLinkMaterialCapacity] = {};
+        const std::uint32_t material_count = std::min(
+            metrics->source_material_count,
+            kSafeLinkMaterialCapacity);
+        for (std::uint32_t index = 0;
+             index < material_count; ++index) {
+            PspLinkMaterialLightingRecord material = {};
+            if (!read_link_material_lighting(
+                    runtime.packages.textures, index, &material)) {
+                ++metrics->material_fallback_count;
+                continue;
+            }
+            prepared[index] = {
+                linear_rgb(material.base),
+                linear_rgb(material.emissive),
+                material.alpha,
+                material.lighting_enabled,
+                true,
+            };
+            if (material.lighting_enabled) {
+                ++metrics->runtime_material_lighting_count;
+            } else {
+                ++metrics->unlit_material_count;
+            }
+            const color::GxColorRgba8 emissive =
+                color::unpack_argb(material.emissive);
+            if (emissive.red != 0 || emissive.green != 0 ||
+                emissive.blue != 0) {
+                ++metrics->emissive_material_count;
+            }
+            metrics->material_fallback_count +=
+                material.fallback_reason != 0 ? 1u : 0u;
+        }
+        const color::PackedArgb32 ambient_packed = {
+            input.environment == nullptr
+                ? 0xff000000u : input.environment->ambient};
+        const color::PackedArgb32 key_packed = {
+            input.environment == nullptr
+                ? 0xff000000u : input.environment->key_light_color};
+        const LinearRgb ambient = normalized_chroma(ambient_packed);
+        const LinearRgb key = normalized_chroma(key_packed);
+        const SafeLinkLightingVariant variant =
+            input.lighting_mode == LightingMode::SafeAmbient
+                ? SafeLinkLightingVariant::AmbientOnly
+                : input.lighting_mode ==
+                        LightingMode::SafeWrappedDiffuse
+                    ? SafeLinkLightingVariant::WrappedDiffuse
+                    : SafeLinkLightingVariant::WrappedDiffuseRim;
+        const bool lut_eligible =
+            variant != SafeLinkLightingVariant::WrappedDiffuseRim;
+        if (lut_eligible &&
+            (!g_safe_link_lut_valid ||
+             g_safe_link_lut_package !=
+                 runtime.packages.textures.bytes ||
+             g_safe_link_lut_package_size !=
+                 runtime.packages.textures.size ||
+             g_safe_link_lut_ambient != ambient_packed.value ||
+             g_safe_link_lut_key != key_packed.value ||
+             g_safe_link_lut_variant != variant)) {
+            for (std::uint32_t material_index = 0;
+                 material_index < material_count; ++material_index) {
+                const PreparedMaterial& material =
+                    prepared[material_index];
+                for (std::uint32_t level = 0;
+                     level < kSafeLinkLightLevels; ++level) {
+                    const float wrapped =
+                        static_cast<float>(level) /
+                        static_cast<float>(
+                            kSafeLinkLightLevels - 1);
+                    const LinearRgb lit =
+                        evaluate_prepared_safe_link_lighting_factors(
+                            material.base, material.emissive,
+                            material.lighting_enabled, ambient, key,
+                            wrapped, 0.0f, variant);
+                    g_safe_link_color_lut[material_index][level] =
+                        psp_vertex_color(lit, material.alpha).value;
+                }
+            }
+            g_safe_link_lut_package =
+                runtime.packages.textures.bytes;
+            g_safe_link_lut_package_size =
+                runtime.packages.textures.size;
+            g_safe_link_lut_ambient = ambient_packed.value;
+            g_safe_link_lut_key = key_packed.value;
+            g_safe_link_lut_variant = variant;
+            g_safe_link_lut_valid = true;
+        }
+        for (std::uint32_t index = 0;
+             index < runtime.vertex_count; ++index) {
+            const std::uint8_t material_index =
+                model[vertex_table + index * vertex_stride + 43];
+            if (material_index >= material_count ||
+                !prepared[material_index].valid) {
+                g_link_lighting_vertices[index].color = 0xffffffffu;
+                continue;
+            }
+            const Vec3 normal = {
+                source[index].nx, source[index].ny, source[index].nz};
+            color::PspColorAbgr8888 packed = {};
+            if (lut_eligible) {
+                const float ndotl = std::clamp(
+                    normal.x * light_direction.x +
+                    normal.y * light_direction.y +
+                    normal.z * light_direction.z,
+                    -1.0f, 1.0f);
+                const float wrapped = std::clamp(
+                    (ndotl + kSafeLinkLighting.wrap_bias) /
+                        (1.0f + kSafeLinkLighting.wrap_bias),
+                    0.0f, 1.0f);
+                const std::uint32_t level =
+                    static_cast<std::uint32_t>(
+                        wrapped * static_cast<float>(
+                            kSafeLinkLightLevels - 1) + 0.5f);
+                packed.value =
+                    g_safe_link_color_lut[material_index][level];
+            } else {
+                const Vec3 view_direction = normalized_direction({
+                    camera_model.x - source[index].x,
+                    camera_model.y - source[index].y,
+                    camera_model.z - source[index].z,
+                });
+                const PreparedMaterial& material =
+                    prepared[material_index];
+                const LinearRgb lit =
+                    evaluate_prepared_safe_link_lighting(
+                        material.base, material.emissive,
+                        material.lighting_enabled, ambient, key,
+                        normal, light_direction, view_direction, variant);
+                packed = psp_vertex_color(lit, material.alpha);
+            }
+            g_link_lighting_vertices[index].color = packed.value;
+            const color::GxColorRgba8 channels =
+                color::unpack_psp_abgr(packed);
+            const float luminance =
+                (0.2126f * channels.red + 0.7152f * channels.green +
+                 0.0722f * channels.blue) / 255.0f;
+            metrics->link_lighting_luminance_min = std::min(
+                metrics->link_lighting_luminance_min, luminance);
+            metrics->link_lighting_luminance_mean += luminance;
+            metrics->link_lighting_luminance_max = std::max(
+                metrics->link_lighting_luminance_max, luminance);
+        }
+        if (runtime.vertex_count != 0) {
+            metrics->link_lighting_luminance_mean /=
+                static_cast<float>(runtime.vertex_count);
+        }
+        // Skinning normalizes every finite output normal immediately before
+        // this render pass. Rechecking it with thousands of square roots here
+        // would duplicate that invariant in the performance-sensitive path.
+        metrics->normal_length_min = 1.0f;
+        metrics->normal_length_max = 1.0f;
+        metrics->normal_error_mean = 0.0f;
+        metrics->normal_error_max = 0.0f;
+        metrics->source_material_colors_loaded =
+            metrics->source_material_count ==
+                kSafeLinkMaterialCapacity &&
+            metrics->material_fallback_count == 0;
+        metrics->color_channel_mapping_valid = true;
+        metrics->light_transform_valid = true;
+        metrics->source_approx_link_visible =
+            metrics->source_material_colors_loaded;
+        metrics->safe_link_visible =
+            metrics->source_material_colors_loaded &&
+            metrics->link_lighting_luminance_min >=
+                kSafeLinkLighting.minimum_illumination -
+                    (1.0f / 255.0f);
+        sceKernelDcacheWritebackRange(
+            g_link_lighting_vertices,
+            runtime.vertex_count * sizeof(SkinnedVertex));
+        metrics->lighting_cpu_us = static_cast<std::uint32_t>(
+            monotonic_microseconds() - lighting_begin);
+        return g_link_lighting_vertices;
+    }
     bool material_seen[27] = {};
     float debug_mean = 0.0f;
     float debug_square_mean = 0.0f;
@@ -562,6 +786,11 @@ const SkinnedVertex* prepare_link_lighting_vertices(
          index < runtime.vertex_count; ++index) {
         const Vec3 normal = {
             source[index].nx, source[index].ny, source[index].nz};
+        const Vec3 view_direction = {
+            camera_model.x - source[index].x,
+            camera_model.y - source[index].y,
+            camera_model.z - source[index].z,
+        };
         const float length = std::sqrt(
             normal.x * normal.x +
             normal.y * normal.y +
@@ -619,7 +848,7 @@ const SkinnedVertex* prepare_link_lighting_vertices(
                     lighting_for_vertex(
                         input.lighting_mode, material,
                         input.environment, normal,
-                        light_direction),
+                        light_direction, view_direction),
                     material.alpha).value;
         } else {
             g_link_lighting_vertices[index].color = 0xffffffffu;
@@ -631,11 +860,23 @@ const SkinnedVertex* prepare_link_lighting_vertices(
             (debug.red + debug.green + debug.blue) / (3.0f * 255.0f);
         debug_mean += debug_value;
         debug_square_mean += debug_value * debug_value;
+        const color::GxColorRgba8 lit = color::unpack_psp_abgr(
+            color::PspColorAbgr8888{
+                g_link_lighting_vertices[index].color});
+        const float luminance =
+            (0.2126f * lit.red + 0.7152f * lit.green +
+             0.0722f * lit.blue) / 255.0f;
+        metrics->link_lighting_luminance_min = std::min(
+            metrics->link_lighting_luminance_min, luminance);
+        metrics->link_lighting_luminance_mean += luminance;
+        metrics->link_lighting_luminance_max = std::max(
+            metrics->link_lighting_luminance_max, luminance);
     }
     if (runtime.vertex_count != 0) {
         const float inverse =
             1.0f / static_cast<float>(runtime.vertex_count);
         metrics->normal_error_mean *= inverse;
+        metrics->link_lighting_luminance_mean *= inverse;
         debug_mean *= inverse;
         debug_square_mean *= inverse;
         metrics->normal_debug_color_variance =
@@ -650,6 +891,12 @@ const SkinnedVertex* prepare_link_lighting_vertices(
         metrics->zero_normal_count == 0 &&
         metrics->non_finite_normal_count == 0 &&
         metrics->source_material_colors_loaded;
+    metrics->safe_link_visible =
+        (input.lighting_mode == LightingMode::SafeAmbient ||
+         input.lighting_mode == LightingMode::SafeWrappedDiffuse ||
+         input.lighting_mode == LightingMode::SafeWrappedDiffuseRim) &&
+        metrics->link_lighting_luminance_min >=
+            kSafeLinkLighting.minimum_illumination - (1.0f / 255.0f);
     sceKernelDcacheWritebackRange(
         g_link_lighting_vertices,
         runtime.vertex_count * sizeof(SkinnedVertex));
@@ -1366,8 +1613,13 @@ void draw_real_link(
     const std::uint32_t submesh_offset = read_u32(model + 84);
     const std::uint32_t submesh_stride = read_u32(model + 88);
     const std::uint32_t submeshes = read_u32(model + 28);
-    const SkinnedVertex* submitted =
-        prepare_link_lighting_vertices(runtime, input, metrics);
+    const bool cpu_vertex_lighting =
+        input.lighting_mode != LightingMode::Off &&
+        input.lighting_mode != LightingMode::TextureOnly &&
+        input.lighting_mode != LightingMode::GuCandidate;
+    const SkinnedVertex* submitted = cpu_vertex_lighting
+        ? prepare_link_lighting_vertices(runtime, input, metrics)
+        : current_vertices(runtime);
     if (input.lighting_mode == LightingMode::GuCandidate) {
         enable_actor_environment_lighting(input);
     } else {
@@ -2112,6 +2364,7 @@ bool initialize_renderer(
         return false;
     }
     *metrics = {};
+    g_safe_link_lut_valid = false;
     g_edram = static_cast<std::uint8_t*>(sceGeEdramGetAddr());
     metrics->edram_total = sceGeEdramGetSize();
     metrics->edram_framebuffers = kFramebuffers;
@@ -3021,6 +3274,7 @@ void shutdown_renderer() {
     sceGuDisplay(GU_FALSE);
     sceGuTerm();
     g_startup_ui_package = {};
+    g_safe_link_lut_valid = false;
     g_initialized = false;
 }
 

@@ -618,6 +618,17 @@ target_compile_options(render_profile_host_test PRIVATE
     -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
 )
 
+add_executable(safe_link_lighting_host_test
+    safe_link_lighting_host_test.cpp
+)
+target_include_directories(safe_link_lighting_host_test PRIVATE
+    "${DUSK_PSP_ROOT}/include"
+)
+target_compile_features(safe_link_lighting_host_test PRIVATE cxx_std_20)
+target_compile_options(safe_link_lighting_host_test PRIVATE
+    -Wall -Wextra -Werror -fsigned-char -fno-exceptions -fno-rtti
+)
+
 add_executable(depth_behavior_contract_host_test
     depth_behavior_contract_host_test.cpp
 )
