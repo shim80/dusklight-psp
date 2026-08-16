@@ -86,6 +86,9 @@ prepare_tree() {
     --manifest "$PROJECT_ROOT/reference/parity/alpha-f-sp108/material-state-v1.json" \
     --dprm "$destination/data/stages/F_SP108/R01/room.dprm" \
     --dptx "$destination/data/stages/F_SP108/R01/room.dptx"
+  python3 "$PROJECT_ROOT/tools/room_material_pass_upgrade.py" \
+    "$destination/data/stages/F_SP108/R01/room.dptx" \
+    "$destination/data/stages/F_SP108/R01/room.dptx"
   for room in R09 R02; do
     for package in room.dprm room.dptx room.dpcl room.dpsc ROOM.MANIFEST; do
       cp -- "$ROOMS/stages/D_MN10/$room/$package" \

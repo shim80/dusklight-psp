@@ -39,6 +39,7 @@ add_executable(startup_title_asset_host_test
 add_executable(startup_camera_parity_host_test
     startup_camera_parity_host_test.cpp
     "${DUSK_PSP_ROOT}/src/startup_camera.cpp"
+    "${DUSK_PSP_ROOT}/src/startup_camera_track.cpp"
 )
 target_include_directories(startup_camera_parity_host_test PRIVATE
     "${DUSK_PSP_ROOT}/include"

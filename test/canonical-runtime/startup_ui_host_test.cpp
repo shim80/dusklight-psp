@@ -35,14 +35,14 @@ bool validate(
 
 int main(int argc, char** argv) {
     if ((argc != 3 && argc != 4) ||
-        !validate(argv[1], 3, 512, 512) ||
+        !validate(argv[1], 1, 512, 512) ||
         !validate(argv[2], 17, 256, 64) ||
         (argc == 4 && !validate(argv[3], 8, 512, 512))) {
         std::fputs("startup UI package validation failed\n", stderr);
         return 1;
     }
     std::puts(
-        "STARTUP_UI_HOST_OK format=DPSU1 logos=warning,nintendo,dolby "
+        "STARTUP_UI_HOST_OK format=DPSU1 logo=dusklight_psp_team "
         "title_text=Appuyez_sur_START file_select=source_textures");
     return 0;
 }

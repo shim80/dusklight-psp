@@ -8,6 +8,7 @@
 #include "dusk/psp/room_package.hpp"
 #include "dusk/psp/startup_camera.hpp"
 #include "dusk/psp/startup_runtime.hpp"
+#include "dusk/psp/startup_route_capture.hpp"
 
 #include <pspctrl.h>
 
@@ -26,6 +27,7 @@ constexpr std::uint32_t kStartupCapabilities =
     startup::Capability::Gameplay;
 constexpr std::uint32_t kStartupFrameDelayMicroseconds = 16667;
 constexpr std::uint32_t kTitleLogoFrames = 300;
+constexpr std::uint32_t kTitleCameraFinalSourceFrame = 1800;
 constexpr std::uint16_t kNoUiChannel = 0xffffu;
 constexpr std::uint16_t kTitlePromptChannel = 8;
 constexpr std::uint32_t kTitleLogoClip = 7;
@@ -265,14 +267,6 @@ int run_canonical_startup_then_game() {
         shutdown();
         return 21;
     }
-    const std::uint32_t opening_display_frames =
-        playable::startup_title_camera_display_frames(packages.title_camera.view);
-    if (opening_display_frames == 0) {
-        unload_canonical_startup_packages(&packages);
-        shutdown();
-        return 22;
-    }
-
     TitleLogoGeometry title_geometry = {};
     if (!initialize_title_logo_geometry(packages, &title_geometry)) {
         unload_canonical_startup_packages(&packages);
@@ -310,6 +304,11 @@ int run_canonical_startup_then_game() {
     std::uint32_t title_frame = 0;
     std::uint32_t previous_buttons = 0;
     bool reached_title_prompt = false;
+    const bool capture_route = startup_route_capture_enabled();
+    bool captured_team_logo = false;
+    bool captured_title_scene = false;
+    bool captured_title_logo = false;
+    bool captured_title_prompt = false;
 
     for (;;) {
         SceCtrlData pad = {};
@@ -367,17 +366,13 @@ int run_canonical_startup_then_game() {
         } else if (segment == startup::Segment::OpeningLoad) {
             render_ok = playable::render_black_transition_frame(&render_metrics);
         } else if (segment == startup::Segment::OpeningRealtime) {
-            playable::StartupTitleCamera camera = {};
-            if (!playable::startup_title_camera_from_track(
-                    packages.title_camera.view, opening_frame, &camera)) {
-                render_ok = false;
-            } else {
-                const playable::StaticModelRenderView title_model =
-                    make_title_model(packages);
-                render_ok = playable::render_startup_title_frame(
-                    title_model, camera, false,
-                    kNoUiChannel, 255, &render_metrics);
-            }
+            const playable::StartupTitleCamera camera =
+                playable::startup_title_camera_from_source(opening_frame / 2u);
+            const playable::StaticModelRenderView title_model =
+                make_title_model(packages);
+            render_ok = playable::render_startup_title_frame(
+                title_model, camera, false,
+                kNoUiChannel, 255, &render_metrics);
             ++opening_frame;
         } else if (segment == startup::Segment::TitleLogo ||
                    segment == startup::Segment::TitlePrompt) {
@@ -385,24 +380,20 @@ int run_canonical_startup_then_game() {
                     &packages, title_geometry, &title_animation)) {
                 render_ok = false;
             } else {
-                playable::StartupTitleCamera camera = {};
-                if (!playable::startup_title_camera_from_track(
-                        packages.title_camera.view,
-                        opening_display_frames, &camera)) {
-                    render_ok = false;
-                } else {
-                    const playable::StaticModelRenderView title_model =
-                        make_title_model(packages);
-                    render_ok = playable::render_startup_title_frame(
-                        title_model, camera, true,
-                        segment == startup::Segment::TitlePrompt
-                            ? kTitlePromptChannel
-                            : kNoUiChannel,
-                        segment == startup::Segment::TitlePrompt
-                            ? title_prompt_alpha(segment_frame)
-                            : 255,
-                        &render_metrics);
-                }
+                const playable::StartupTitleCamera camera =
+                    playable::startup_title_camera_from_source(
+                        kTitleCameraFinalSourceFrame);
+                const playable::StaticModelRenderView title_model =
+                    make_title_model(packages);
+                render_ok = playable::render_startup_title_frame(
+                    title_model, camera, true,
+                    segment == startup::Segment::TitlePrompt
+                        ? kTitlePromptChannel
+                        : kNoUiChannel,
+                    segment == startup::Segment::TitlePrompt
+                        ? title_prompt_alpha(segment_frame)
+                        : 255,
+                    &render_metrics);
             }
             if (segment == startup::Segment::TitleLogo) {
                 title_animation.play();
@@ -421,9 +412,33 @@ int run_canonical_startup_then_game() {
             return 29;
         }
 
+        if (capture_route) {
+            if (segment == startup::Segment::TeamLogo &&
+                segment_frame >= 75 && !captured_team_logo) {
+                captured_team_logo = capture_startup_route_frame(
+                    "startup-team-logo.5650");
+            } else if (segment == startup::Segment::TitleLogo &&
+                       title_frame >= 2 && !captured_title_scene) {
+                captured_title_scene = capture_startup_route_frame(
+                    "startup-fsp102-scene.5650");
+            } else if (segment == startup::Segment::TitleLogo &&
+                       title_frame >= 180 && !captured_title_logo) {
+                captured_title_logo = capture_startup_route_frame(
+                    "startup-title-logo.5650");
+            } else if (segment == startup::Segment::TitlePrompt &&
+                       segment_frame >= 30 && !captured_title_prompt) {
+                captured_title_prompt = capture_startup_route_frame(
+                    "startup-title-prompt.5650");
+            }
+        }
+
         startup::Input input = {};
         if (segment == startup::Segment::TitlePrompt) {
-            input.start = start_pressed;
+            input.start = start_pressed ||
+                (capture_route && captured_team_logo &&
+                 captured_title_scene && captured_title_logo &&
+                 captured_title_prompt &&
+                 segment_frame >= 45);
         } else {
             input.start = start_pressed;
             input.confirm = cross_pressed;
@@ -431,7 +446,7 @@ int run_canonical_startup_then_game() {
         const bool resources_ready = segment == startup::Segment::OpeningLoad;
         const bool source_event_complete =
             (segment == startup::Segment::OpeningRealtime &&
-             opening_frame >= opening_display_frames) ||
+             opening_frame >= kTitleCameraFinalSourceFrame * 2u) ||
             (segment == startup::Segment::TitleLogo &&
              title_frame >= kTitleLogoFrames);
         if (!startup_runtime.tick(

@@ -1,6 +1,6 @@
 # Dusklight PSP — current status
 
-Updated: 2026-08-14
+Updated: 2026-08-16
 
 ## Project direction
 
@@ -151,6 +151,29 @@ This checkpoint does **not** close visual parity. The current execution environm
 
 Detailed report: `docs/reports/205-psp-pc-fidelity-startup-checkpoint.md`.
 
+## Asset-backed reduced-startup replay
+
+The branch now has an opt-in PPSSPP route proof for the complete intended sequence:
+
+`Dusklight PSP team logo -> F_SP102 title -> START -> source-derived file select -> F_SP108/R01/start21`
+
+Final local request `startup-title-fidelity-v12` completed in 15,208 ms with six
+RGB565 captures, valid route metrics and marker
+`DUSKLIGHT_PSP_STARTUP_ROUTE_CAPTURE_OK`. The EBOOT is an Allegrex binary with
+SHA-256 `eb8d4412a674f18a0885ec659c681d1fc71c187ef637797b606c880bc6ad09e1`.
+
+The canonical startup paths now match the packaged `title_room` assets, the
+nonexistent camera package dependency is removed, and file select uses its DPSU
+panels/cursor rather than debug text. The F_SP108 MPV1 upgrade is reproducible in the
+asset build and the final gameplay capture retains the improved bounded water pass.
+
+Two title-material passes were tested and rejected because they produced a white
+rectangle and then a missing logo. Their code was removed and the recognizable
+baseline restored. Title composition and source-derived file-select typography remain
+open; this checkpoint is route/visual evidence, not PC parity.
+
+Detailed report: `docs/reports/206-startup-route-file-select-ppsspp.md`.
+
 ## Active task
 
 Close the first release path in the canonical EBOOT while increasing visible fidelity where the source assets are available:
@@ -159,9 +182,9 @@ Close the first release path in the canonical EBOOT while increasing visible fid
 
 Immediate targets:
 
-1. replay the reduced startup with the authorized workspace assets and compare F_SP102/title captures against Dusklight PC;
-2. address the largest visible material/alpha/depth/UV differences first;
-3. fix water, fog, far-background and scene layers in F_SP102/F_SP108;
+1. capture the exact desktop reference for the same six route checkpoints;
+2. address the remaining title TEV/UV/material-animation defects without exceeding the bounded PSP pass budget;
+3. improve source-faithful file-select typography/content, then fog, far-background and scene layers;
 4. preserve the already-proven save/control/gameplay route;
 5. extend title/scene material animation only with source-backed BPK/BRK/BTK behavior.
 

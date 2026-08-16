@@ -6,6 +6,14 @@ PSP_MODULE_INFO("DusklightPSP", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
 PSP_HEAP_SIZE_KB(-256);
 
+#ifndef DUSKLIGHT_BUILD_COMMIT
+#define DUSKLIGHT_BUILD_COMMIT "unknown"
+#endif
+
+namespace {
+[[gnu::used]] const char kDusklightBuildCommit[] = DUSKLIGHT_BUILD_COMMIT;
+}
+
 int main() {
     const int result = dusk::psp::game::run_canonical_startup_then_game();
     sceKernelExitGame();

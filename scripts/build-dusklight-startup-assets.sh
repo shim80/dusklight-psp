@@ -16,6 +16,8 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 "$SCRIPT_DIR/verify-link-loader-sources.sh"
 "$SCRIPT_DIR/build-link-loader-probe.sh"
 
+PROBE="$(assert_project_path "build/host/link-loader/probe/dusk_link_loader_probe")"
+
 OUTPUT="$(assert_project_path "build/assets/dusklight-startup")"
 PASS1="$(assert_project_path "build/assets/dusklight-startup-pass1")"
 PASS2="$(assert_project_path "build/assets/dusklight-startup-pass2")"
@@ -160,6 +162,11 @@ done
   done
 } >"$OUTPUT/STARTUP.MANIFEST"
 
+if [ ! -f "$PROJECT_ROOT/build/host/canonical-runtime/build.ninja" ]; then
+  cmake -S "$PROJECT_ROOT/test/canonical-runtime" \
+    -B "$PROJECT_ROOT/build/host/canonical-runtime" \
+    -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+fi
 cmake --build "$PROJECT_ROOT/build/host/canonical-runtime" \
   --target startup_ui_host_test
 "$PROJECT_ROOT/build/host/canonical-runtime/startup_ui_host_test" \

@@ -36,12 +36,6 @@ struct OwnedStartupAnimation {
     playable::PackageView view;
 };
 
-struct OwnedStartupCamera {
-    std::uint8_t* bytes;
-    std::uint32_t size;
-    camera::TrackView view;
-};
-
 struct CanonicalStartupPackages {
     OwnedStartupSequence sequence;
     OwnedStartupUi logos_ui;
@@ -52,7 +46,6 @@ struct CanonicalStartupPackages {
     OwnedStartupRoomPackage title_logo_model;
     OwnedStartupRoomPackage title_logo_textures;
     OwnedStartupAnimation title_logo_animation;
-    OwnedStartupCamera title_camera;
 };
 
 enum class CanonicalStartupLoadError : std::uint8_t {
@@ -72,11 +65,13 @@ enum class CanonicalStartupLoadError : std::uint8_t {
     TitleLogoModelPackage,
     TitleLogoTexturePackage,
     TitleLogoAnimationPackage,
-    TitleCameraPackage,
 };
 
 CanonicalStartupLoadError load_canonical_startup_packages(
     CanonicalStartupPackages* packages);
+CanonicalStartupLoadError load_canonical_file_select_ui(
+    OwnedStartupUi* package);
+void unload_canonical_startup_ui(OwnedStartupUi* package);
 void unload_canonical_startup_packages(CanonicalStartupPackages* packages);
 const char* canonical_startup_load_error_name(CanonicalStartupLoadError error);
 

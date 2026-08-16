@@ -183,6 +183,30 @@ Still open:
 
 Detailed report: `docs/reports/205-psp-pc-fidelity-startup-checkpoint.md`.
 
+## 7c. Asset-backed reduced-startup replay
+
+Local request `startup-title-fidelity-v12` validates the complete reduced route in
+pinned PPSSPP 1.20.4 with OpenGL and the hardware PSP renderer:
+
+`team logo -> F_SP102/title -> START -> file select -> F_SP108/R01/start21`
+
+The request completed in 15,208 ms and produced six framebuffers, valid metrics and
+`DUSKLIGHT_PSP_STARTUP_ROUTE_CAPTURE_OK`. Final EBOOT SHA-256:
+
+`eb8d4412a674f18a0885ec659c681d1fc71c187ef637797b606c880bc6ad09e1`
+
+The file-select screen now uses its source-derived DPSU panels/cursor. The startup
+loader uses the actual `title_room` package names and no longer requires the
+nonexistent `title_camera.dpcm`. The F_SP108 MPV1 water upgrade is applied by the
+reproducible asset build.
+
+Two bounded title experiments regressed the image (white rectangle, then missing
+logo), so both were discarded. The final title is the recognizable baseline and still
+needs source-backed TEV/UV/BPK/BRK/BTK work. Do not claim desktop parity.
+
+Resume from `docs/reports/206-startup-route-file-select-ppsspp.md`, then obtain an
+exact desktop capture for the same checkpoints before the next visual pass.
+
 ## 8. Immediate next work
 
 1. replay the reduced `Dusklight logo -> title -> START -> save -> gameplay` path using the authorized workspace asset set;

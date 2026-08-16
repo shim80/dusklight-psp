@@ -28,7 +28,7 @@ for required in \
 done
 
 commit="$(awk -F= \
-  '$1 == "DUSKLIGHT_BUILD_COMMIT:UNINITIALIZED" {print $2}' \
+  '$1 ~ /^DUSKLIGHT_BUILD_COMMIT:/ {print $2}' \
   "$PROJECT_ROOT/build/psp/dusklight/CMakeCache.txt")"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || die "commit de build absent du cache"
 git cat-file -e "$commit^{commit}" || die "commit de build inconnu : $commit"

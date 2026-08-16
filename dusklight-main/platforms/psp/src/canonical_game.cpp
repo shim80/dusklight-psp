@@ -4,6 +4,7 @@
 #include "dusk/psp/canonical_assets.hpp"
 #include "dusk/psp/canonical_common_loader.hpp"
 #include "dusk/psp/canonical_room_loader.hpp"
+#include "dusk/psp/canonical_startup_loader.hpp"
 #include "dusk/psp/first_playable_controls.hpp"
 #include "dusk/psp/platform.hpp"
 #include "dusk/psp/playable_render.hpp"
@@ -12,6 +13,7 @@
 #include "dusk/psp/real_room_runtime.hpp"
 #include "dusk/psp/room_package.hpp"
 #include "dusk/psp/startup_save_flow.hpp"
+#include "dusk/psp/startup_route_capture.hpp"
 
 #include <pspctrl.h>
 #include <pspdebug.h>
@@ -131,35 +133,12 @@ bool drive_public_startup_to_file_select(startup::StartupSaveFlow* flow) {
            flow->phase() == startup::SaveFlowPhase::FileSelect;
 }
 
-void draw_file_select(
+bool draw_file_select(
     const startup::StartupSaveFlow& flow,
-    const char* status) {
-    pspDebugScreenSetBackColor(0x00000000);
-    pspDebugScreenSetTextColor(0x00FFFFFF);
-    pspDebugScreenClear();
-    pspDebugScreenSetXY(5, 2);
-    pspDebugScreenPrintf("D U S K L I G H T");
-    pspDebugScreenSetXY(5, 4);
-    pspDebugScreenPrintf("SELECT SAVE FILE");
-    for (std::size_t index = 0; index < save::kSlotCount; ++index) {
-        const save::Slot& slot = flow.bank().slot(index);
-        pspDebugScreenSetXY(6, static_cast<int>(8 + index * 3));
-        pspDebugScreenPrintf(
-            "%c FILE %u   ", flow.selected_slot() == index ? '>' : ' ',
-            static_cast<unsigned>(index + 1));
-        if (!slot.occupied) {
-            pspDebugScreenPrintf("NEW GAME");
-        } else {
-            pspDebugScreenPrintf(
-                "CONTINUE  %-7s R%02d S%02u",
-                slot.start.stage.data(), static_cast<int>(slot.start.room),
-                static_cast<unsigned>(slot.start.start_point));
-        }
-    }
-    pspDebugScreenSetXY(5, 19);
-    pspDebugScreenPrintf("UP/DOWN SELECT    X/START CONFIRM");
-    pspDebugScreenSetXY(5, 21);
-    pspDebugScreenPrintf("%-55s", status != nullptr ? status : "READY");
+    playable::RenderMetrics* metrics) {
+    return playable::render_startup_ui_frame_layers(
+        9, static_cast<std::uint16_t>(10 + flow.selected_slot()),
+        255, metrics);
 }
 
 void draw_room_error(
@@ -430,6 +409,23 @@ int run_canonical_game() {
         return 5;
     }
 
+    OwnedStartupUi file_select_ui = {};
+    playable::RenderMetrics file_select_metrics = {};
+    if (load_canonical_file_select_ui(&file_select_ui) !=
+            CanonicalStartupLoadError::Ok ||
+        !playable::initialize_startup_ui_renderer(
+            file_select_ui.view, g_command_list, sizeof(g_command_list),
+            &file_select_metrics)) {
+        unload_canonical_startup_ui(&file_select_ui);
+        log_error("player-facing file select initialization failed", -22);
+        shutdown();
+        return 5;
+    }
+    bool file_select_renderer_active = true;
+    const bool capture_route = startup_route_capture_enabled();
+    bool captured_file_select = false;
+    bool captured_gameplay = false;
+
     static CanonicalRoomPackages room_packages = {};
     static CanonicalCommonPackages common_packages = {};
     static room::RealRoomRuntime runtime = {};
@@ -446,11 +442,16 @@ int run_canonical_game() {
     bool controls_proven = false;
     save::StartContext handoff = {};
 
-    draw_file_select(
-        flow,
-        flow.last_storage_result() == save::StorageResult::Ok
-            ? "SAVE BANK LOADED - SELECT FILE"
-            : "SELECT FILE");
+    if (!draw_file_select(flow, &file_select_metrics)) {
+        playable::shutdown_renderer();
+        unload_canonical_startup_ui(&file_select_ui);
+        shutdown();
+        return 5;
+    }
+    if (capture_route) {
+        captured_file_select = capture_startup_route_frame(
+            "startup-file-select.5650");
+    }
 
     for (;;) {
         SceCtrlData pad = {};
@@ -465,34 +466,38 @@ int run_canonical_game() {
         sample.analog_y = pad.Ly;
         const playable::Input input =
             controls::map_gameplay_input(sample, &mapper);
+        const bool route_confirm =
+            capture_route && captured_file_select &&
+            flow.phase() == startup::SaveFlowPhase::FileSelect;
 
         if (!gameplay_active && !terminal_room_error &&
             flow.phase() == startup::SaveFlowPhase::FileSelect &&
             (input.up_pressed || input.down_pressed ||
-             input.action_pressed || input.pause_pressed)) {
+             input.action_pressed || input.pause_pressed || route_confirm)) {
             startup::SaveFlowInput flow_input = {};
             flow_input.up = input.up_pressed;
             flow_input.down = input.down_pressed;
-            flow_input.confirm = input.action_pressed;
+            flow_input.confirm = input.action_pressed || route_confirm;
             flow_input.start = input.pause_pressed;
             if (!flow.tick(flow_input)) {
-                draw_file_select(flow, "SAVE FLOW ERROR");
+                log_error("player-facing save flow failed", -23);
             } else {
-                draw_file_select(
-                    flow,
-                    flow.phase() == startup::SaveFlowPhase::Transition
-                        ? "TRANSITION TO GAMEPLAY"
-                        : "SELECT FILE");
+                draw_file_select(flow, &file_select_metrics);
             }
         }
 
         if (!gameplay_active && !terminal_room_error &&
             flow.phase() == startup::SaveFlowPhase::Transition) {
             if (!flow.tick({false, false, false, false, false, true})) {
-                draw_file_select(flow, "NEW GAME TRANSITION ERROR");
+                log_error("new game transition failed", -24);
                 terminal_room_error = true;
             } else if (flow.phase() == startup::SaveFlowPhase::HandoffReady &&
                        flow.consume_handoff(&handoff)) {
+                if (file_select_renderer_active) {
+                    playable::shutdown_renderer();
+                    file_select_renderer_active = false;
+                    unload_canonical_startup_ui(&file_select_ui);
+                }
                 const char* error_category = "canonical gameplay";
                 const char* error_detail = "unknown failure";
                 if (!initialize_first_playable(
@@ -562,6 +567,13 @@ int run_canonical_game() {
                         "stage=F_SP108 room=1 start=21 actors=9 "
                         "render=game_alpha_source_fog frame=1");
                     first_render_proven = true;
+                    if (capture_route && !captured_gameplay) {
+                        captured_gameplay = capture_startup_route_frame(
+                            "startup-gameplay.5650");
+                        if (captured_gameplay) {
+                            complete_startup_route_capture();
+                        }
+                    }
                     arm_first_playable_control_proof(
                         &control_proof, runtime.state);
                 } else if (!controls_proven &&
@@ -581,6 +593,10 @@ int run_canonical_game() {
     if (renderer_active) {
         playable::shutdown_renderer();
     }
+    if (file_select_renderer_active) {
+        playable::shutdown_renderer();
+    }
+    unload_canonical_startup_ui(&file_select_ui);
     if (actor_system_active) {
         actor::destroy_actor_system(&actors);
     }
