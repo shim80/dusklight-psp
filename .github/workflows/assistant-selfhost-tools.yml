@@ -1,0 +1,33 @@
+name: Assistant selfhost tools
+
+on:
+  push:
+    branches:
+      - assistant/selfhost-tools-20260817
+  workflow_dispatch:
+
+jobs:
+  stage-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bootstrap dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl xz-utils
+      - name: Bootstrap pinned PSPDEV and PPSSPP
+        run: ./scripts/bootstrap-repro.sh
+      - name: Pack Linux tools
+        run: |
+          tar -C .tools -czf /tmp/dusklight-linux-psp-tools.tar.gz pspdev ppsspp
+          sha256sum /tmp/dusklight-linux-psp-tools.tar.gz | tee /tmp/dusklight-linux-psp-tools.sha256
+          ls -lh /tmp/dusklight-linux-psp-tools.tar.gz
+      - name: Upload Linux tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-linux-psp-tools
+          compression-level: 0
+          path: |
+            /tmp/dusklight-linux-psp-tools.tar.gz
+            /tmp/dusklight-linux-psp-tools.sha256
