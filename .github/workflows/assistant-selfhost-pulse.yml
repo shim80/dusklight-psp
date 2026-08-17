@@ -1,0 +1,33 @@
+name: Assistant selfhost PulseAudio
+
+on:
+  push:
+    branches:
+      - assistant/selfhost-tools-20260817
+  workflow_dispatch:
+
+jobs:
+  stage-pulse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PulseAudio
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio pulseaudio-utils
+      - name: Pack PulseAudio runtime
+        run: |
+          mkdir -p /tmp/pulse-runtime/bin /tmp/pulse-runtime/lib
+          cp -L /usr/bin/pulseaudio /usr/bin/pactl /tmp/pulse-runtime/bin/
+          for exe in /usr/bin/pulseaudio /usr/bin/pactl; do
+            ldd "$exe" | awk '/=> \/|^\// {for(i=1;i<=NF;i++) if ($i ~ /^\//) print $i}'
+          done | sort -u | while read -r lib; do cp -L "$lib" /tmp/pulse-runtime/lib/ || true; done
+          find /usr/lib/x86_64-linux-gnu/pulseaudio -maxdepth 1 -type f -name '*.so*' -exec cp -L {} /tmp/pulse-runtime/lib/ \; || true
+          tar -C /tmp -czf /tmp/pulse-runtime.tar.gz pulse-runtime
+          sha256sum /tmp/pulse-runtime.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulse-runtime
+          compression-level: 0
+          path: /tmp/pulse-runtime.tar.gz
