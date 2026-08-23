@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/pc-capture-fetch
+  pull_request:
+    branches:
+      - agent/psp-pc-fidelity-startup
   workflow_dispatch:
 
 permissions:
@@ -37,7 +40,9 @@ jobs:
           s = p.read_text()
           s = s.replace('#include <cstring>\n', '#include <cstring>\n#include <cstdio>\n#include <cstdlib>\n', 1)
           anchor = '''    dMeter2Info_setHorseLifeCount(m_lashCnt);\n    return 1;\n}'''
-          insert = '''    dMeter2Info_setHorseLifeCount(m_lashCnt);\n\n    const char* traceHorse = std::getenv("DUSKLIGHT_LINK_Epona_TRACE");\n    const char* traceStage = dComIfGp_getStartStageName();\n    if (traceHorse != NULL && traceHorse[0] == '1' && traceHorse[1] == '\\0' &&\n        traceStage != NULL && std::strcmp(traceStage, "F_SP102") == 0) {\n        static unsigned long long traceFrame = 0;\n        const MtxP saddle = (m_model != NULL) ? m_model->getAnmMtx(21) : NULL;\n        std::fprintf(stderr,\n            "[HORSETRACE] frame=%llu pos=%.9g,%.9g,%.9g yaw=%d proc=%u demo=%u anim=%u anim_frame=%.9g anim_rate=%.9g speedF=%.9g saddle=%.9g,%.9g,%.9g\\n",\n            traceFrame, current.pos.x, current.pos.y, current.pos.z, (int)shape_angle.y,\n            (unsigned)m_procID, (unsigned)m_demoMode, (unsigned)m_anmIdx[0],\n            m_frameCtrl[0].getFrame(), m_frameCtrl[0].getRate(), speedF,\n            saddle != NULL ? saddle[0][3] : 0.0f,\n            saddle != NULL ? saddle[1][3] : 0.0f,\n            saddle != NULL ? saddle[2][3] : 0.0f);\n        std::fflush(stderr);\n        ++traceFrame;\n    }\n    return 1;\n}'''
+          insert = '''    dMeter2Info_setHorseLifeCount(m_lashCnt);\n\n    const char* traceHorse = std::getenv("DUSKLIGHT_LINK_EPONA_TRACE");\n    const char* traceStage = dComIfGp_getStartStageName();\n    if (traceHorse != NULL && traceHorse[0] == '1' && traceHorse[1] == '\\0' &&\n        traceStage != NULL && std::strcmp(traceStage, "F_SP102") == 0) {\n        static unsigned long long traceFrame = 0;\n        const MtxP saddle = (m_model != NULL) ? m_model->getAnmMtx(21) : NULL;\n        std::fprintf(stderr,\n            "[HORSETRACE] frame=%llu pos=%.9g,%.9g,%.9g yaw=%d proc=%u demo=%u anim=%u anim_frame=%.9g anim_rate=%.9g speedF=%.9g saddle=%.9g,%.9g,%.9g\\n",\n            traceFrame, current.pos.x, current.pos.y, current.pos.z, (int)shape_angle.y,\n            (unsigned)m_procID, (unsigned)m_demoMode, (unsigned)m_anmIdx[0],\n            m_frameCtrl[0].getFrame(), m_frameCtrl[0].getRate(), speedF,\n            saddle != NULL ? saddle[0][3] : 0.0f,\n            saddle != NULL ? saddle[1][3] : 0.0f,\n            saddle != NULL ? saddle[2][3] : 0.0f);\n        std::fflush(stderr);\n        ++traceFrame;\n    }\n#endif\n    return 1;\n}'''
+          # Avoid needing any trace-only compile definition by opening a local guard.
+          insert = insert.replace('    const char* traceHorse', '#ifdef DUSKLIGHT_REFERENCE_TRACE\n    const char* traceHorse')
           if anchor not in s:
               raise SystemExit('horse trace anchor missing')
           p.write_text(s.replace(anchor, insert, 1))
@@ -46,10 +51,26 @@ jobs:
           s = p.read_text()
           s = s.replace('#include "d/actor/d_a_horse.h"\n', '#include "d/actor/d_a_horse.h"\n#include <cstdio>\n#include <cstdlib>\n', 1)
           anchor = '''    return 1;\n}\n\nstatic int daAlink_Execute(daAlink_c* i_this) {'''
-          insert = '''    const char* traceLink = std::getenv("DUSKLIGHT_LINK_Epona_TRACE");\n    const char* traceStage = dComIfGp_getStartStageName();\n    if (traceLink != NULL && traceLink[0] == '1' && traceLink[1] == '\\0' &&\n        traceStage != NULL && std::strcmp(traceStage, "F_SP102") == 0) {\n        static unsigned long long traceFrame = 0;\n        const MtxP base = (mpLinkModel != NULL) ? mpLinkModel->getBaseTRMtx() : NULL;\n        std::fprintf(stderr,\n            "[LINKTRACE] frame=%llu pos=%.9g,%.9g,%.9g yaw=%d proc=%u anim=%u anim_frame=%.9g anim_rate=%.9g base=%.9g,%.9g,%.9g\\n",\n            traceFrame, current.pos.x, current.pos.y, current.pos.z, (int)shape_angle.y,\n            (unsigned)mProcID, (unsigned)mUnderAnmHeap[0].getIdx(),\n            mUnderFrameCtrl[0].getFrame(), mUnderFrameCtrl[0].getRate(),\n            base != NULL ? base[0][3] : 0.0f,\n            base != NULL ? base[1][3] : 0.0f,\n            base != NULL ? base[2][3] : 0.0f);\n        std::fflush(stderr);\n        ++traceFrame;\n    }\n    return 1;\n}\n\nstatic int daAlink_Execute(daAlink_c* i_this) {'''
+          insert = '''#ifdef DUSKLIGHT_REFERENCE_TRACE\n    const char* traceLink = std::getenv("DUSKLIGHT_LINK_EPONA_TRACE");\n    const char* traceStage = dComIfGp_getStartStageName();\n    if (traceLink != NULL && traceLink[0] == '1' && traceLink[1] == '\\0' &&\n        traceStage != NULL && std::strcmp(traceStage, "F_SP102") == 0) {\n        static unsigned long long traceFrame = 0;\n        const MtxP base = (mpLinkModel != NULL) ? mpLinkModel->getBaseTRMtx() : NULL;\n        std::fprintf(stderr,\n            "[LINKTRACE] frame=%llu pos=%.9g,%.9g,%.9g yaw=%d proc=%u anim=%u anim_frame=%.9g anim_rate=%.9g base=%.9g,%.9g,%.9g\\n",\n            traceFrame, current.pos.x, current.pos.y, current.pos.z, (int)shape_angle.y,\n            (unsigned)mProcID, (unsigned)mUnderAnmHeap[0].getIdx(),\n            mUnderFrameCtrl[0].getFrame(), mUnderFrameCtrl[0].getRate(),\n            base != NULL ? base[0][3] : 0.0f,\n            base != NULL ? base[1][3] : 0.0f,\n            base != NULL ? base[2][3] : 0.0f);\n        std::fflush(stderr);\n        ++traceFrame;\n    }\n#endif\n    return 1;\n}\n\nstatic int daAlink_Execute(daAlink_c* i_this) {'''
           if anchor not in s:
               raise SystemExit('link trace anchor missing')
           p.write_text(s.replace(anchor, insert, 1))
+          PY
+      - name: Enable trace compile define
+        run: |
+          set -euo pipefail
+          cd dusklight
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('CMakeLists.txt')
+          s=p.read_text()
+          marker='project('
+          # Configure-time option already supported by the historical reference patches is absent here,
+          # so add a global, behavior-neutral trace define for the logging-only build.
+          if 'add_compile_definitions(DUSKLIGHT_REFERENCE_TRACE=1)' not in s:
+              pos=s.find('\n', s.find(marker))
+              s=s[:pos+1]+'add_compile_definitions(DUSKLIGHT_REFERENCE_TRACE=1)\n'+s[pos+1:]
+          p.write_text(s)
           PY
       - name: Build Linux RelWithDebInfo
         run: |
