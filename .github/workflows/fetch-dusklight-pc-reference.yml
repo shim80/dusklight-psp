@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  fetch:
+  fetch-release:
     runs-on: ubuntu-latest
     steps:
       - name: Download official Linux x86_64 release
@@ -23,11 +23,45 @@ jobs:
           url='https://github.com/TwilitRealm/dusklight/releases/download/v1.4.1/Dusklight-v1.4.1-linux-x86_64.AppImage'
           curl -L --fail --retry 4 --retry-delay 2 "$url" -o Dusklight-v1.4.1-linux-x86_64.AppImage
           echo 'f5dd1308c131430945cc12cdd44f22d31e3dd6ec5458498491924a5e9fa92d40  Dusklight-v1.4.1-linux-x86_64.AppImage' | sha256sum -c -
-          chmod +x Dusklight-v1.4.1-linux-x86_64.AppImage
-      - name: Upload verified reference binary
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: dusklight-pc-v1.4.1-linux-x86_64
           path: Dusklight-v1.4.1-linux-x86_64.AppImage
-          if-no-files-found: error
+          retention-days: 1
+
+  build-reference-snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang cmake curl git libasound2-dev libclang-dev libcurl4-openssl-dev libdbus-1-dev libfreetype-dev libglu1-mesa-dev libgtk-3-dev libncurses5-dev libpng-dev libpulse-dev libudev-dev libvulkan-dev libx11-xcb-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxtst-dev lld ninja-build python-is-python3 python3 python3-markupsafe zlib1g-dev
+      - name: Checkout exact historical Dusklight snapshot
+        run: |
+          set -euo pipefail
+          git clone --recursive https://github.com/TwilitRealm/dusklight.git dusklight
+          cd dusklight
+          git checkout 1bae8a5e6a812217ca33ba533e707ecfa64b1553
+          git submodule update --init --recursive
+          git rev-parse HEAD
+      - name: Build Linux RelWithDebInfo
+        run: |
+          set -euo pipefail
+          cd dusklight
+          cmake --preset linux-default-relwithdebinfo
+          cmake --build --preset linux-default-relwithdebinfo -j2
+          find build -maxdepth 3 -type f -perm -111 -printf '%p\n'
+      - name: Stage binary and runtime resources
+        run: |
+          set -euo pipefail
+          cd dusklight
+          mkdir -p ../pc-snapshot
+          cp build/linux-default-relwithdebinfo/dusklight ../pc-snapshot/dusklight
+          cp -a build/linux-default-relwithdebinfo/*.db ../pc-snapshot/ 2>/dev/null || true
+          cp -a build/linux-default-relwithdebinfo/*.json ../pc-snapshot/ 2>/dev/null || true
+          sha256sum ../pc-snapshot/* > ../pc-snapshot/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-pc-reference-1bae8a5e
+          path: pc-snapshot
           retention-days: 1
