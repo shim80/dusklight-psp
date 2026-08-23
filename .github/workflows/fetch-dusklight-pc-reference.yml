@@ -1,0 +1,30 @@
+name: Fetch Dusklight PC reference
+
+on:
+  push:
+    branches:
+      - agent/pc-capture-fetch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download official Linux x86_64 release
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://github.com/TwilitRealm/dusklight/releases/download/v1.4.1/Dusklight-v1.4.1-linux-x86_64.AppImage'
+          curl -L --fail --retry 4 --retry-delay 2 "$url" -o Dusklight-v1.4.1-linux-x86_64.AppImage
+          echo 'f5dd1308c131430945cc12cdd44f22d31e3dd6ec5458498491924a5e9fa92d40  Dusklight-v1.4.1-linux-x86_64.AppImage' | sha256sum -c -
+          chmod +x Dusklight-v1.4.1-linux-x86_64.AppImage
+      - name: Upload verified reference binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dusklight-pc-v1.4.1-linux-x86_64
+          path: Dusklight-v1.4.1-linux-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 1
