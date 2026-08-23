@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/pc-capture-fetch
+  pull_request:
+    branches:
+      - agent/psp-pc-fidelity-startup
   workflow_dispatch:
 
 permissions:
