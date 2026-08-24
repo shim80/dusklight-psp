@@ -1,4 +1,4 @@
-name: Link Epona full animation oracle
+name: Link Epona final joint oracle
 
 on:
   pull_request:
@@ -25,7 +25,7 @@ jobs:
           git checkout 1bae8a5e6a812217ca33ba533e707ecfa64b1553
           git submodule update --init --recursive
           test "$(git rev-parse HEAD)" = 1bae8a5e6a812217ca33ba533e707ecfa64b1553
-      - name: Add read-only full actor oracle
+      - name: Add read-only binary final-joint oracle
         shell: bash
         run: |
           set -euo pipefail
@@ -36,36 +36,36 @@ jobs:
           p=Path('src/d/actor/d_a_horse.cpp')
           s=p.read_text().replace('#include <cstring>\n','#include <cstring>\n#include <cstdio>\n#include <cstdlib>\n',1)
           a='''    dMeter2Info_setHorseLifeCount(m_lashCnt);\n    return 1;\n}'''
-          b='''    dMeter2Info_setHorseLifeCount(m_lashCnt);\n#ifdef DUSKLIGHT_REFERENCE_TRACE\n    const char* tr=std::getenv("DUSKLIGHT_LINK_EPONA_TRACE");\n    if(tr&&tr[0]=='1'&&tr[1]=='\\0'){\n      static unsigned long long f=0; const MtxP mb=m_model?m_model->getBaseTRMtx():NULL; const MtxP root=m_model?m_model->getAnmMtx(0):NULL; const MtxP saddle=m_model?m_model->getAnmMtx(21):NULL;\n      std::fprintf(stderr,"[HFX] f=%llu proc=%u demo=%u idx=%u,%u,%u frame=%.9g,%.9g,%.9g rate=%.9g,%.9g,%.9g ratio=%.9g,%.9g,%.9g speed=%.9g pos=%.9g,%.9g,%.9g ang=%d,%d,%d mb=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g root=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g saddle=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\\n",f,(unsigned)m_procID,(unsigned)m_demoMode,(unsigned)m_anmIdx[0],(unsigned)m_anmIdx[1],(unsigned)m_anmIdx[2],m_frameCtrl[0].getFrame(),m_frameCtrl[1].getFrame(),m_frameCtrl[2].getFrame(),m_frameCtrl[0].getRate(),m_frameCtrl[1].getRate(),m_frameCtrl[2].getRate(),m_anmRatio[0].getRatio(),m_anmRatio[1].getRatio(),m_anmRatio[2].getRatio(),speedF,current.pos.x,current.pos.y,current.pos.z,(int)shape_angle.x,(int)shape_angle.y,(int)shape_angle.z,mb?mb[0][0]:0,mb?mb[0][1]:0,mb?mb[0][2]:0,mb?mb[0][3]:0,mb?mb[1][0]:0,mb?mb[1][1]:0,mb?mb[1][2]:0,mb?mb[1][3]:0,mb?mb[2][0]:0,mb?mb[2][1]:0,mb?mb[2][2]:0,mb?mb[2][3]:0,root?root[0][0]:0,root?root[0][1]:0,root?root[0][2]:0,root?root[0][3]:0,root?root[1][0]:0,root?root[1][1]:0,root?root[1][2]:0,root?root[1][3]:0,root?root[2][0]:0,root?root[2][1]:0,root?root[2][2]:0,root?root[2][3]:0,saddle?saddle[0][0]:0,saddle?saddle[0][1]:0,saddle?saddle[0][2]:0,saddle?saddle[0][3]:0,saddle?saddle[1][0]:0,saddle?saddle[1][1]:0,saddle?saddle[1][2]:0,saddle?saddle[1][3]:0,saddle?saddle[2][0]:0,saddle?saddle[2][1]:0,saddle?saddle[2][2]:0,saddle?saddle[2][3]:0); std::fflush(stderr); ++f;}\n#endif\n    return 1;\n}'''
+          b='''    dMeter2Info_setHorseLifeCount(m_lashCnt);\n#ifdef DUSKLIGHT_REFERENCE_TRACE\n    const char* tr=std::getenv("DUSKLIGHT_LINK_EPONA_TRACE");\n    if(tr&&tr[0]=='1'&&tr[1]=='\\0'&&m_model){\n      static unsigned int f=0; FILE* fp=std::fopen("horse_final_joints.bin","ab");\n      if(fp){ const unsigned int magic=0x314d4a48u; const unsigned short jc=m_model->getModelData()->getJointNum(), zero=0; const MtxP mb=m_model->getBaseTRMtx(); std::fwrite(&magic,4,1,fp); std::fwrite(&f,4,1,fp); std::fwrite(&jc,2,1,fp); std::fwrite(&zero,2,1,fp); std::fwrite(mb,sizeof(float),12,fp); for(unsigned short j=0;j<jc;j++){const MtxP m=m_model->getAnmMtx(j); std::fwrite(m,sizeof(float),12,fp);} std::fclose(fp); } ++f;\n    }\n#endif\n    return 1;\n}'''
           if a not in s: raise SystemExit('horse anchor missing')
           p.write_text(s.replace(a,b,1))
 
           p=Path('src/d/actor/d_a_alink.cpp')
           s=p.read_text().replace('#include "d/actor/d_a_horse.h"\n','#include "d/actor/d_a_horse.h"\n#include <cstdio>\n#include <cstdlib>\n',1)
           a='''    return 1;\n}\n\nstatic int daAlink_Execute(daAlink_c* i_this) {'''
-          b='''#ifdef DUSKLIGHT_REFERENCE_TRACE\n    const char* tr=std::getenv("DUSKLIGHT_LINK_EPONA_TRACE");\n    if(tr&&tr[0]=='1'&&tr[1]=='\\0'){\n      static unsigned long long f=0; const MtxP mb=mpLinkModel?mpLinkModel->getBaseTRMtx():NULL; const MtxP j0=mpLinkModel?mpLinkModel->getAnmMtx(0):NULL; const MtxP j4=mpLinkModel?mpLinkModel->getAnmMtx(4):NULL;\n      std::fprintf(stderr,"[LFX] f=%llu proc=%u idx=%u,%u,%u frame=%.9g,%.9g,%.9g rate=%.9g,%.9g,%.9g ratio=%.9g,%.9g,%.9g pos=%.9g,%.9g,%.9g ang=%d,%d,%d mb=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g j0=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g j4=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\\n",f,(unsigned)mProcID,(unsigned)mUnderAnmHeap[0].getIdx(),(unsigned)mUnderAnmHeap[1].getIdx(),(unsigned)mUnderAnmHeap[2].getIdx(),mUnderFrameCtrl[0].getFrame(),mUnderFrameCtrl[1].getFrame(),mUnderFrameCtrl[2].getFrame(),mUnderFrameCtrl[0].getRate(),mUnderFrameCtrl[1].getRate(),mUnderFrameCtrl[2].getRate(),mNowAnmPackUnder[0].getRatio(),mNowAnmPackUnder[1].getRatio(),mNowAnmPackUnder[2].getRatio(),current.pos.x,current.pos.y,current.pos.z,(int)shape_angle.x,(int)shape_angle.y,(int)shape_angle.z,mb?mb[0][0]:0,mb?mb[0][1]:0,mb?mb[0][2]:0,mb?mb[0][3]:0,mb?mb[1][0]:0,mb?mb[1][1]:0,mb?mb[1][2]:0,mb?mb[1][3]:0,mb?mb[2][0]:0,mb?mb[2][1]:0,mb?mb[2][2]:0,mb?mb[2][3]:0,j0?j0[0][0]:0,j0?j0[0][1]:0,j0?j0[0][2]:0,j0?j0[0][3]:0,j0?j0[1][0]:0,j0?j0[1][1]:0,j0?j0[1][2]:0,j0?j0[1][3]:0,j0?j0[2][0]:0,j0?j0[2][1]:0,j0?j0[2][2]:0,j0?j0[2][3]:0,j4?j4[0][0]:0,j4?j4[0][1]:0,j4?j4[0][2]:0,j4?j4[0][3]:0,j4?j4[1][0]:0,j4?j4[1][1]:0,j4?j4[1][2]:0,j4?j4[1][3]:0,j4?j4[2][0]:0,j4?j4[2][1]:0,j4?j4[2][2]:0,j4?j4[2][3]:0); std::fflush(stderr); ++f;}\n#endif\n    return 1;\n}\n\nstatic int daAlink_Execute(daAlink_c* i_this) {'''
+          b='''#ifdef DUSKLIGHT_REFERENCE_TRACE\n    const char* tr=std::getenv("DUSKLIGHT_LINK_EPONA_TRACE");\n    if(tr&&tr[0]=='1'&&tr[1]=='\\0'&&mpLinkModel){\n      static unsigned int f=0; FILE* fp=std::fopen("link_final_joints.bin","ab");\n      if(fp){ const unsigned int magic=0x314d4a4cu; const unsigned short jc=mpLinkModel->getModelData()->getJointNum(), zero=0; const MtxP mb=mpLinkModel->getBaseTRMtx(); std::fwrite(&magic,4,1,fp); std::fwrite(&f,4,1,fp); std::fwrite(&jc,2,1,fp); std::fwrite(&zero,2,1,fp); std::fwrite(mb,sizeof(float),12,fp); for(unsigned short j=0;j<jc;j++){const MtxP m=mpLinkModel->getAnmMtx(j); std::fwrite(m,sizeof(float),12,fp);} std::fclose(fp); } ++f;\n    }\n#endif\n    return 1;\n}\n\nstatic int daAlink_Execute(daAlink_c* i_this) {'''
           if a not in s: raise SystemExit('link anchor missing')
           p.write_text(s.replace(a,b,1))
 
           p=Path('CMakeLists.txt'); s=p.read_text(); i=s.find('\n',s.find('project(')); p.write_text(s[:i+1]+'add_compile_definitions(DUSKLIGHT_REFERENCE_TRACE=1)\n'+s[i+1:])
           PY
-          grep -q '\[HFX\]' src/d/actor/d_a_horse.cpp
-          grep -q '\[LFX\]' src/d/actor/d_a_alink.cpp
+          grep -q 'horse_final_joints.bin' src/d/actor/d_a_horse.cpp
+          grep -q 'link_final_joints.bin' src/d/actor/d_a_alink.cpp
       - name: Build Linux RelWithDebInfo
         run: |
           cd dusklight
           cmake --preset linux-default-relwithdebinfo
           cmake --build --preset linux-default-relwithdebinfo -j2
-          strings build/linux-default-relwithdebinfo/dusklight | grep -q '\[HFX\]'
-          strings build/linux-default-relwithdebinfo/dusklight | grep -q '\[LFX\]'
+          strings build/linux-default-relwithdebinfo/dusklight | grep -q 'horse_final_joints.bin'
+          strings build/linux-default-relwithdebinfo/dusklight | grep -q 'link_final_joints.bin'
       - name: Stage
         run: |
           mkdir -p pc-trace
           cp dusklight/build/linux-default-relwithdebinfo/dusklight pc-trace/dusklight-trace
           sha256sum pc-trace/dusklight-trace > pc-trace/SHA256SUMS.txt
-          printf '%s\n' 'upstream=1bae8a5e6a812217ca33ba533e707ecfa64b1553' 'trace=3-lane-animation-ratios-plus-world-root-saddle-matrices' > pc-trace/TRACE_INFO.txt
+          printf '%s\n' 'upstream=1bae8a5e6a812217ca33ba533e707ecfa64b1553' 'trace=final-joint-matrices-plus-model-base-per-actor-tick' > pc-trace/TRACE_INFO.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: link-epona-full-animation-oracle
+          name: link-epona-final-joint-oracle
           path: pc-trace
           retention-days: 1
