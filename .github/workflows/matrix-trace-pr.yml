@@ -1,0 +1,71 @@
+name: Link Epona final joint oracle
+
+on:
+  pull_request:
+    branches:
+      - agent/psp-pc-fidelity-startup
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang cmake curl git libasound2-dev libclang-dev libcurl4-openssl-dev libdbus-1-dev libfreetype-dev libglu1-mesa-dev libgtk-3-dev libncurses5-dev libpng-dev libpulse-dev libudev-dev libvulkan-dev libx11-xcb-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxtst-dev lld ninja-build python-is-python3 python3 python3-markupsafe zlib1g-dev
+      - name: Checkout exact historical Dusklight snapshot
+        run: |
+          set -euo pipefail
+          git clone --recursive https://github.com/TwilitRealm/dusklight.git dusklight
+          cd dusklight
+          git checkout 1bae8a5e6a812217ca33ba533e707ecfa64b1553
+          git submodule update --init --recursive
+          test "$(git rev-parse HEAD)" = 1bae8a5e6a812217ca33ba533e707ecfa64b1553
+      - name: Add read-only binary final-joint oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dusklight
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('src/d/actor/d_a_horse.cpp')
+          s=p.read_text().replace('#include <cstring>\n','#include <cstring>\n#include <cstdio>\n#include <cstdlib>\n',1)
+          a='''    dMeter2Info_setHorseLifeCount(m_lashCnt);\n    return 1;\n}'''
+          b='''    dMeter2Info_setHorseLifeCount(m_lashCnt);\n#ifdef DUSKLIGHT_REFERENCE_TRACE\n    const char* tr=std::getenv("DUSKLIGHT_LINK_EPONA_TRACE");\n    if(tr&&tr[0]=='1'&&tr[1]=='\\0'&&m_model){\n      static unsigned int f=0; FILE* fp=std::fopen("horse_final_joints.bin","ab");\n      if(fp){ const unsigned int magic=0x314d4a48u; const unsigned short jc=m_model->getModelData()->getJointNum(), zero=0; const MtxP mb=m_model->getBaseTRMtx(); std::fwrite(&magic,4,1,fp); std::fwrite(&f,4,1,fp); std::fwrite(&jc,2,1,fp); std::fwrite(&zero,2,1,fp); std::fwrite(mb,sizeof(float),12,fp); for(unsigned short j=0;j<jc;j++){const MtxP m=m_model->getAnmMtx(j); std::fwrite(m,sizeof(float),12,fp);} std::fclose(fp); } ++f;\n    }\n#endif\n    return 1;\n}'''
+          if a not in s: raise SystemExit('horse anchor missing')
+          p.write_text(s.replace(a,b,1))
+
+          p=Path('src/d/actor/d_a_alink.cpp')
+          s=p.read_text().replace('#include "d/actor/d_a_horse.h"\n','#include "d/actor/d_a_horse.h"\n#include <cstdio>\n#include <cstdlib>\n',1)
+          a='''    return 1;\n}\n\nstatic int daAlink_Execute(daAlink_c* i_this) {'''
+          b='''#ifdef DUSKLIGHT_REFERENCE_TRACE\n    const char* tr=std::getenv("DUSKLIGHT_LINK_EPONA_TRACE");\n    if(tr&&tr[0]=='1'&&tr[1]=='\\0'&&mpLinkModel){\n      static unsigned int f=0; FILE* fp=std::fopen("link_final_joints.bin","ab");\n      if(fp){ const unsigned int magic=0x314d4a4cu; const unsigned short jc=mpLinkModel->getModelData()->getJointNum(), zero=0; const MtxP mb=mpLinkModel->getBaseTRMtx(); std::fwrite(&magic,4,1,fp); std::fwrite(&f,4,1,fp); std::fwrite(&jc,2,1,fp); std::fwrite(&zero,2,1,fp); std::fwrite(mb,sizeof(float),12,fp); for(unsigned short j=0;j<jc;j++){const MtxP m=mpLinkModel->getAnmMtx(j); std::fwrite(m,sizeof(float),12,fp);} std::fclose(fp); } ++f;\n    }\n#endif\n    return 1;\n}\n\nstatic int daAlink_Execute(daAlink_c* i_this) {'''
+          if a not in s: raise SystemExit('link anchor missing')
+          p.write_text(s.replace(a,b,1))
+
+          p=Path('CMakeLists.txt'); s=p.read_text(); i=s.find('\n',s.find('project(')); p.write_text(s[:i+1]+'add_compile_definitions(DUSKLIGHT_REFERENCE_TRACE=1)\n'+s[i+1:])
+          PY
+          grep -q 'horse_final_joints.bin' src/d/actor/d_a_horse.cpp
+          grep -q 'link_final_joints.bin' src/d/actor/d_a_alink.cpp
+      - name: Build Linux RelWithDebInfo
+        run: |
+          cd dusklight
+          cmake --preset linux-default-relwithdebinfo
+          cmake --build --preset linux-default-relwithdebinfo -j2
+          strings build/linux-default-relwithdebinfo/dusklight | grep -q 'horse_final_joints.bin'
+          strings build/linux-default-relwithdebinfo/dusklight | grep -q 'link_final_joints.bin'
+      - name: Stage
+        run: |
+          mkdir -p pc-trace
+          cp dusklight/build/linux-default-relwithdebinfo/dusklight pc-trace/dusklight-trace
+          sha256sum pc-trace/dusklight-trace > pc-trace/SHA256SUMS.txt
+          printf '%s\n' 'upstream=1bae8a5e6a812217ca33ba533e707ecfa64b1553' 'trace=final-joint-matrices-plus-model-base-per-actor-tick' > pc-trace/TRACE_INFO.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: link-epona-final-joint-oracle
+          path: pc-trace
+          retention-days: 1
